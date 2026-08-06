@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "matpower-python"
-version = "0.1.1"
+version = "0.1.2"
 authors = [
     { name = "Robert MS Danaraj", email = "salorajan@gmail.com" },
     { name = "Dr. M. RAMESH BABU", email = "rameshbabum@stjosephs.ac.in" }
@@ -19,10 +19,10 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "cvxpy",
-    "numpy",
-    "pandas",
-    "scipy",
+    "cvxpy==1.8.2",
+    "numpy==2.4.4",
+    "pandas==3.0.2",
+    "scipy==1.17.1",
 ]
 
 [project.urls]
