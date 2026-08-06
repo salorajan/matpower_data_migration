@@ -1,0 +1,56 @@
+Subject: Progress Update: PowerPython Library Published to PyPI (matpower-python)
+
+Dear Ramesh,
+
+I hope you are doing well. 
+
+I am writing to share some exciting news regarding our MATLAB-to-Python power system library. The project has been fully finalized, clean-compiled, and is now officially published to PyPI! 
+
+Our package is named "matpower-python" (version 0.1.2) and is publicly available for anyone to install. 
+
+I have also updated the GitHub repository with the latest code, entry points, and documentation. You can view the live links here:
+* PyPI Package Page: https://pypi.org/project/matpower-python/
+* GitHub Repository: https://github.com/salorajan/matpower_data_migration
+
+We have added our official authorship credits and a dedicated acknowledgment section to both PyPI and the GitHub repository, thanking St. Joseph's College of Engineering for their support and resources during this research and implementation.
+
+How to Install and Test the Package:
+
+To test the package, you can set up a clean Python environment and follow these steps:
+
+1. Install the package directly from PyPI:
+   pip install matpower-python
+
+2. Test the Command-Line Interface (CLI):
+   The package registers 23 direct terminal commands. Try running these to run simulations and automatically export reports to Excel or Word:
+   * AC Power Flow on Case 14, output to Excel:
+     acpf case14 1e-4 excel
+     (Generates acpf_case14.xlsx)
+   * Holomorphic Embedding on Case 9, output to Word:
+     hepf case9 docx
+     (Generates hepf_case9.docx)
+   * Export Solver Help Menu to a Word Document:
+     hepf --help docx
+     (Generates hepf_help.docx)
+
+3. Test the Python Scripting Mode:
+   You can import the module directly in your custom Python scripts to load test cases, access standard MATPOWER indexing constants, and run simulations programmatically:
+   
+   import power_python as pp
+
+   case = pp.PowerCase()
+   case.load_from_json("outputs/json/case9.json")
+
+   # Run Holomorphic Embedding
+   case, success = pp.run_hepf(case)
+   if success:
+       print(f"Bus 1 Voltage Magnitude: {case.bus[0, pp.VM]} p.u.")
+
+I have attached our complete "manual.md" user manual to this email. It contains the full list of the 23 CLI commands, arguments, and detailed Python script examples for sensitivity factors, contingency loops, and other advanced solvers.
+
+Please let me know if you have any feedback or run into any issues during testing. 
+
+Best regards,
+
+Robert
+salorajan@gmail.com
