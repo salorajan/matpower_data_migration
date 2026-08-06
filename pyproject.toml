@@ -1,0 +1,67 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "powerpython"
+version = "0.1.0"
+authors = [
+    { name = "Robert MS Danaraj", email = "salorajan@gmail.com" },
+    { name = "Dr. M. RAMESH BABU", email = "rameshbabum@stjosephs.ac.in" }
+]
+description = "A modern Pythonic power system analysis library, serving as a functional superset of MATPOWER."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "cvxpy",
+    "numpy",
+    "pandas",
+    "scipy",
+]
+
+[project.urls]
+Homepage = "https://github.com/salorajan/matpower_data_migration"
+Repository = "https://github.com/salorajan/matpower_data_migration"
+
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+]
+
+[project.scripts]
+power-cli = "power_python.cli:main"
+acpf = "power_python.cli:cli_acpf"
+gausspf = "power_python.cli:cli_gausspf"
+fdpf = "power_python.cli:cli_fdpf"
+dcpf = "power_python.cli:cli_dcpf"
+hepf = "power_python.cli:cli_hepf"
+cnr = "power_python.cli:cli_cnr"
+dcopf = "power_python.cli:cli_dcopf"
+acopf = "power_python.cli:cli_acopf"
+sdpopf = "power_python.cli:cli_sdpopf"
+uopf = "power_python.cli:cli_uopf"
+market = "power_python.cli:cli_market"
+lmp = "power_python.cli:cli_lmp"
+mpopf = "power_python.cli:cli_mpopf"
+stopf = "power_python.cli:cli_stopf"
+radial = "power_python.cli:cli_radial"
+pf3p = "power_python.cli:cli_pf3p"
+opf3p = "power_python.cli:cli_opf3p"
+varplan = "power_python.cli:cli_varplan"
+contingency = "power_python.cli:cli_contingency"
+scopf = "power_python.cli:cli_scopf"
+se = "power_python.cli:cli_se"
+cpf = "power_python.cli:cli_cpf"
+audit = "power_python.cli:cli_audit"
+
+[tool.setuptools.packages.find]
+include = ["power_python*"]
+

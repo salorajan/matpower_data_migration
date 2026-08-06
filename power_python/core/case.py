@@ -1,3 +1,10 @@
+# PowerPython
+# Copyright (c) 2026 PowerPython contributors
+# This file is derived from MATPOWER, Copyright (c) 1996-2025,
+# Power Systems Engineering Research Center (PSERC) by Ray Zimmerman, PSERC Cornell.
+# Licensed under the 3-clause BSD License (see LICENSE file for details).
+# See https://github.com/salorajan/matpower_data_migration for more info.
+
 import numpy as np
 import json
 from .constants import *
@@ -14,14 +21,31 @@ class PowerCase:
         self.gen = np.empty((0, 25))
         self.branch = np.empty((0, 21))
         self.gencost = np.empty((0, 7)) # Minimum columns for gencost
+        self.reserves = {} # Reserve zones, requirements, costs
+        
+        # 3-Phase Data (Unbalanced)
+        self.bus3p = np.empty((0, 9))
+        self.line3p = np.empty((0, 6))
+        self.xfmr3p = np.empty((0, 9))
+        self.load3p = np.empty((0, 9))
+        self.gen3p = np.empty((0, 12))
+        self.lc = np.empty((0, 19))
+        
+        # Multi-period & Storage Data
+        self.storage = {}   # UnitIdx, MaxStorage, InEff, OutEff, etc.
+        self.profiles = {}  # Type ('load', 'gen'), idx, values (nt x 1)
         
         # Internal mapping
         self.bus_map = {} # External BUS_I -> Internal 0-based index
+        self.is_internal = False
+        self.external_bus_ids = None
+        self.external_gen_ids = None
 
     def load_from_json(self, file_path):
         """
         Loads case data from a JSON file formatted by the project converters.
         """
+        self.is_internal = False
         with open(file_path, 'r') as f:
             data = json.load(f)
         
@@ -63,7 +87,6 @@ class PowerCase:
                 self.gen[i, GEN_STATUS] = g.get("GEN_STATUS", 1)
                 self.gen[i, PMAX] = g.get("PMAX", 0.0)
                 self.gen[i, PMIN] = g.get("PMIN", 0.0)
-                # ... other columns as needed for OPF
         
         if "Branch" in data:
             branch_list = data["Branch"]
@@ -97,6 +120,23 @@ class PowerCase:
                     for j, val in enumerate(costs):
                         if COST + j < self.gencost.shape[1]:
                             self.gencost[i, COST + j] = val
+                            
+        if "Reserves" in data:
+            self.reserves = data["Reserves"]
+            
+        # Load 3-Phase Data
+        if "Bus3P" in data:
+            self.bus3p = np.array(data["Bus3P"])
+        if "Line3P" in data:
+            self.line3p = np.array(data["Line3P"])
+        if "Xfmr3P" in data:
+            self.xfmr3p = np.array(data["Xfmr3P"])
+        if "Load3P" in data:
+            self.load3p = np.array(data["Load3P"])
+        if "Gen3P" in data:
+            self.gen3p = np.array(data["Gen3P"])
+        if "LineConst" in data:
+            self.lc = np.array(data["LineConst"])
 
     def get_internal_bus_idx(self, external_id):
         return self.bus_map.get(int(external_id))
@@ -104,19 +144,20 @@ class PowerCase:
     def to_internal(self):
         """
         Converts external bus numbers to internal 0-based indices.
-        Updates the matrices in-place.
+        Updates the matrices in-place. Idempotent.
         """
+        if self.is_internal:
+            return
+            
         # Create a copy of the mapping for efficiency
         mapping = self.bus_map
         
         # Update Bus matrix
-        # BUS_I column stays as external for reference, or we can replace it.
-        # MATPOWER usually replaces it. Let's follow that.
-        # But we need to save the original IDs if we want to go back.
         self.external_bus_ids = self.bus[:, BUS_I].copy()
         self.bus[:, BUS_I] = np.arange(len(self.bus))
         
         # Update Generator matrix
+        self.external_gen_ids = np.arange(len(self.gen))
         for i in range(len(self.gen)):
             self.gen[i, GEN_BUS] = mapping[int(self.gen[i, GEN_BUS])]
             
@@ -124,6 +165,12 @@ class PowerCase:
         for i in range(len(self.branch)):
             self.branch[i, F_BUS] = mapping[int(self.branch[i, F_BUS])]
             self.branch[i, T_BUS] = mapping[int(self.branch[i, T_BUS])]
+            
+        self.is_internal = True
+
+    def copy(self):
+        import copy
+        return copy.deepcopy(self)
 
     def __repr__(self):
         return f"PowerCase(baseMVA={self.baseMVA}, nb={len(self.bus)}, ng={len(self.gen)}, nl={len(self.branch)})"
