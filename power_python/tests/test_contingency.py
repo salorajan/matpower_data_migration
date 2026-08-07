@@ -19,7 +19,7 @@ from power_python.core.constants import *
 def test_contingency_case14():
     case = PowerCase()
     # Using case 14 which is more likely to have interesting contingencies than case 9
-    json_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'outputs', 'json', 'case14.json'))
+    json_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'outputs', 'json', 'case14.json'))
     
     print(f"Loading {json_path} for Contingency Analysis...")
     case.load_from_json(json_path)

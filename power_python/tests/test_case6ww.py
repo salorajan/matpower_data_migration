@@ -28,7 +28,7 @@ class TestCase6WW(unittest.TestCase):
     def setUpClass(cls):
         """Load the case data once for all tests."""
         cls.case = PowerCase()
-        cls.json_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'outputs', 'json', 'case6ww.json'))
+        cls.json_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'outputs', 'json', 'case6ww.json'))
         if not os.path.exists(cls.json_path):
             raise FileNotFoundError(f"Case file not found: {cls.json_path}")
         cls.case.load_from_json(cls.json_path)

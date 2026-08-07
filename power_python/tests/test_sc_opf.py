@@ -18,7 +18,7 @@ from power_python.core.constants import *
 
 def test_sc_opf_case9():
     case = PowerCase()
-    json_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'outputs', 'json', 'case9.json'))
+    json_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'outputs', 'json', 'case9.json'))
     
     print(f"Loading {json_path} for SC-OPF...")
     case.load_from_json(json_path)

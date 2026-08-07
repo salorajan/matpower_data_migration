@@ -34,9 +34,9 @@ class TestComprehensiveAnalyses(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         # Paths for test cases (pointing to outputs/json)
-        cls.case9_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'outputs', 'json', 'case9.json'))
-        cls.case14_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'outputs', 'json', 'case14.json'))
-        cls.case3p_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'outputs', 'json', 'case3p_a.json'))
+        cls.case9_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'outputs', 'json', 'case9.json'))
+        cls.case14_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'outputs', 'json', 'case14.json'))
+        cls.case3p_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'outputs', 'json', 'case3p_a.json'))
         
         for path in [cls.case9_path, cls.case14_path, cls.case3p_path]:
             if not os.path.exists(path):
@@ -236,7 +236,7 @@ class TestComprehensiveAnalyses(unittest.TestCase):
     def test_17_radial(self):
         """Test Radial Power Flow (BFS)"""
         from power_python.solvers.radial_pf import run_radial_pf
-        case = self.get_case(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'outputs', 'json', 'case33bw.json')))
+        case = self.get_case(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'outputs', 'json', 'case33bw.json')))
         case, success = run_radial_pf(case, verbose=False)
         self.assertTrue(success)
         self.print_pf_metrics(case, "17: Radial Power Flow (BFS)")

@@ -18,7 +18,7 @@ from power_python.solvers.complex_nr import run_complex_nr
 from power_python.solvers.complex_nr_3p import run_complex_nr_3p
 
 def test_hepf_convergence():
-    case_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'outputs', 'json', 'case9.json'))
+    case_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'outputs', 'json', 'case9.json'))
     case = PowerCase()
     case.load_from_json(case_path)
     
@@ -28,7 +28,7 @@ def test_hepf_convergence():
     print("HEPF convergence test passed.")
 
 def test_complex_nr_convergence():
-    case_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'outputs', 'json', 'case9.json'))
+    case_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'outputs', 'json', 'case9.json'))
     case = PowerCase()
     case.load_from_json(case_path)
     
@@ -38,7 +38,7 @@ def test_complex_nr_convergence():
     print("Complex NR convergence test passed.")
 
 def test_complex_nr_3p_convergence():
-    case_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'outputs', 'json', 'case3p_a.json'))
+    case_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'outputs', 'json', 'case3p_a.json'))
     case = PowerCase()
     case.load_from_json(case_path)
     

@@ -20,7 +20,7 @@ from power_python.utils.reporter import print_pf_results
 
 def test_case9_pf():
     case = PowerCase()
-    json_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'outputs', 'json', 'case9.json'))
+    json_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'outputs', 'json', 'case9.json'))
     
     print(f"Loading {json_path}...")
     case.load_from_json(json_path)

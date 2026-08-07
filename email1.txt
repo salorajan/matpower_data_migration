@@ -9,8 +9,10 @@ I am writing to share some exciting news regarding our MATLAB-to-Python power sy
 Our package is named "matpower-python" (version 0.1.2) and is publicly available for anyone to install. 
 
 I have also updated the GitHub repository with the latest code, entry points, and documentation. You can view the live links here:
-* PyPI Package Page: https://pypi.org/project/matpower-python/
-* GitHub Repository: https://github.com/salorajan/matpower_data_migration
+* PyPI Package Page: 
+https://pypi.org/project/matpower-python/
+* GitHub Repository: 
+https://github.com/salorajan/matpower_data_migration
 
 We have added our official authorship credits and a dedicated acknowledgment section to both PyPI and the GitHub repository, thanking St. Joseph's College of Engineering for their support and resources during this research and implementation.
 
@@ -52,5 +54,5 @@ Please let me know if you have any feedback or run into any issues during testin
 
 Best regards,
 
-Robert
+RMS Danaraj
 salorajan@gmail.com

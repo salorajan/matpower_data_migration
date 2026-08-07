@@ -44,7 +44,7 @@ from power_python.utils.lmp_decomp import decompose_dc_lmp
 from power_python.utils.costs import calculate_total_cost
 
 # Root data directory mapping
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CASE_DIR = os.path.join(BASE_DIR, "outputs", "json")
 
 HELP_DICT = {
@@ -140,7 +140,7 @@ Guarantees grid operation remains secure and line flows do not exceed emergency 
     
     "opf3p": """Three-Phase Unbalanced AC-OPF
 Usage: opf3p <case_id> [accuracy] [excel|csv|docx]
-Example: opf3p case3p_b excel
+Example: opf3p case3p_a excel
 Physics/Algorithm:
 Solves unbalanced three-phase AC Optimal Power Flow.
 Optimizes generator dispatch at the phase level (a-b-c) to minimize unbalanced distribution costs under operational constraints.""",
@@ -574,7 +574,8 @@ def run_cli_command(analysis, args):
         if not case.storage: case.storage = {'idx': [0], 'MaxCharge': [10.0], 'MaxDischarge': [10.0], 'InEff': [0.95], 'OutEff': [0.95], 'MinSOC': [0.0], 'MaxSOC': [50.0], 'InitialSOC': [25.0]}
         results, success = run_mp_opf(case, nt=nt, verbose=True)
         if success:
-            extra_results = pd.DataFrame(results['Pg'], columns=[f"Hour {i+1}" for i in range(nt)])
+            ng = len(case.gen)
+            extra_results = pd.DataFrame(results['Pg'], columns=[f"Gen {i+1}" for i in range(ng)])
             extra_info["Total Operating Cost"] = f"${results['Cost']:,.2f}"
     elif analysis == 'stopf':
         results, success = run_stochastic_opf(case, verbose=True)
@@ -635,9 +636,12 @@ def run_cli_command(analysis, args):
             export_results_docx(case, f"{analysis}_{case_id}.docx", analysis, success, accuracy, extra_results, extra_info)
         else:
             # Print basic report
-            if hasattr(case, 'bus') and case.bus is not None:
+            if hasattr(case, 'bus') and case.bus is not None and len(case.bus) > 0:
                 vm = case.bus[:, VM]
                 print(f"\n{analysis.upper()} Success! Voltages: Min={np.min(vm):.4f} pu, Max={np.max(vm):.4f} pu")
+            elif hasattr(case, 'bus3p') and case.bus3p is not None and len(case.bus3p) > 0:
+                vm = case.bus3p[:, 3:6]
+                print(f"\n{analysis.upper()} Success! Phase Voltages: Min={np.min(vm):.4f} pu, Max={np.max(vm):.4f} pu")
     else:
         print(f"Simulation failed or did not converge for case {case_id}")
 
