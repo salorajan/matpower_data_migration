@@ -128,4 +128,5 @@ def run_complex_nr(case, max_it=10, tol=1e-8, verbose=True):
         pf, qf, pt, qt = calculate_branch_flows(baseMVA, case.bus, case.branch, V)
         case.branch[:, PF], case.branch[:, QF] = pf, qf
         case.branch[:, PT], case.branch[:, QT] = pt, qt
+        case.update_generator_power()
     return case, success

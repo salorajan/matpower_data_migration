@@ -74,6 +74,46 @@ def run_dc_pf(case, verbose=True):
         case.bus[:, VA] = va * 180 / np.pi
         case.bus[:, VM] = 1.0
         
+        # Calculate DC branch flows
+        Va_rad = va
+        f_idx = case.branch[:, F_BUS].astype(int)
+        t_idx = case.branch[:, T_BUS].astype(int)
+        X_val = case.branch[:, BR_X]
+        tap_val = case.branch[:, TAP].copy()
+        tap_val[tap_val == 0] = 1.0
+        shift_val = case.branch[:, SHIFT] * np.pi / 180
+        
+        pf_val = baseMVA * (Va_rad[f_idx] - Va_rad[t_idx] - shift_val) / (X_val * tap_val)
+        pf_val = pf_val * (case.branch[:, BR_STATUS] > 0)
+        
+        case.branch[:, PF] = pf_val
+        case.branch[:, PT] = -pf_val
+        case.branch[:, QF] = 0.0
+        case.branch[:, QT] = 0.0
+        
+        # Update slack generator PG
+        online_gens = np.where(case.gen[:, GEN_STATUS] > 0)[0]
+        slack_gens = [g for g in online_gens if int(case.gen[g, GEN_BUS]) in ref_idx]
+        non_slack_gens = [g for g in online_gens if int(case.gen[g, GEN_BUS]) not in ref_idx]
+        
+        if len(slack_gens) > 0:
+            total_load = np.sum(case.bus[:, PD])
+            total_non_slack_gen = np.sum(case.gen[non_slack_gens, PG])
+            pg_slack_total = total_load - total_non_slack_gen
+            
+            if len(slack_gens) == 1:
+                case.gen[slack_gens[0], PG] = pg_slack_total
+            else:
+                mbase_sum = sum(case.gen[g, MBASE] for g in slack_gens)
+                if mbase_sum > 0:
+                    for g in slack_gens:
+                        case.gen[g, PG] = pg_slack_total * (case.gen[g, MBASE] / mbase_sum)
+                else:
+                    for g in slack_gens:
+                        case.gen[g, PG] = pg_slack_total / len(slack_gens)
+                        
+        case.gen[online_gens, QG] = 0.0
+        
         if verbose:
             print("DC Power Flow solved successfully.")
         return case, True

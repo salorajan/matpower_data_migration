@@ -85,9 +85,29 @@ if success:
     print("Voltages:")
     for i, bus_id in enumerate(case.external_bus_ids):
         print(f"Bus {int(bus_id)}: Magnitude = {vm[i]:.4f} pu, Angle = {va[i]:.2f} deg")
+        
+    # 4. Programmatic export to styled Excel sheet
+    pp.export_results_excel(case, "solved_case9.xlsx", "hepf")
 ```
 
-### 3.2 Scripting Example: Sensitivity Factors and Contingency Loop
+### 3.2 Programmatic Export API
+You can export results programmatically from your scripts using:
+*   `pp.export_results_excel(case, filename, analysis, extra_results=None)`: Exports to Excel (.xlsx) with Segmented sheets styled in MATLAB MATPOWER format.
+*   `pp.export_results_csv(case, prefix, extra_results=None)`: Exports separate CSV files for `bus`, `gen`, and `branch`.
+*   `pp.export_results_docx(case, filename, analysis, success, accuracy, extra_results=None, extra_info=None)`: Exports a Word report (.docx).
+
+### 3.3 Solved Outputs Excel (.xlsx) Format Details
+The exported Excel sheet has the following sheets and columns matching standard **MATLAB MATPOWER matrices**:
+*   **`General`**: Single-cell `baseMVA` scalar value.
+*   **`Bus`**: All 17 standard bus columns (`BUS_I`, `TYPE`, `PD`, `QD`, `GS`, `BS`, `BUS_AREA`, `VM`, `VA`, `BASE_KV`, `ZONE`, `VMAX`, `VMIN` + OPF multipliers if solved).
+*   **`Generator`**: All 25 standard generator columns (`GEN_BUS`, `PG`, `QG`, `QMAX`, `QMIN`, `VG`, `MBASE`, `GEN_STATUS`, `PMAX`, `PMIN` + OPF multipliers if solved). PG and QG outputs are solved and updated.
+*   **`Branch`**: All 21 standard branch columns (`F_BUS`, `T_BUS`, `BR_R`, `BR_X`, `BR_B`, `RATE_A`, `RATE_B`, `RATE_C`, `TAP`, `SHIFT`, `BR_STATUS`, `ANGMIN`, `ANGMAX`, `PF`, `QF`, `PT`, `QT` + OPF multipliers if solved).
+*   **`Generator Cost`**: (If present) Holds piecewise linear/polynomial generator costs.
+*   **`Bus3P` / `Line3P` / `Xfmr3P` / `Load3P` / `Gen3P` / `LineConst`**: (For 3-phase cases) Phase voltages and specs.
+
+All worksheets are formatted with professional `Segoe UI` fonts, navy blue table headers, frozen first row, auto-fit column widths, visible gridlines, and numeric formatting.
+
+### 3.4 Scripting Example: Sensitivity Factors and Contingency Loop
 ```python
 import power_python as pp
 

@@ -168,6 +168,79 @@ class PowerCase:
             
         self.is_internal = True
 
+    def update_generator_power(self):
+        """
+        Re-calculates and updates generator PG and QG outputs based on the
+        solved bus voltages VM and VA and branch parameters.
+        """
+        if self.bus is None or len(self.bus) == 0 or self.gen is None or len(self.gen) == 0:
+            return
+            
+        from ..network.admittance import make_ybus
+        
+        # Save state and convert to internal representation if not already
+        was_internal = self.is_internal
+        if not was_internal:
+            self.to_internal()
+            
+        try:
+            V = self.bus[:, VM] * np.exp(1j * np.pi / 180 * self.bus[:, VA])
+            Ybus, _, _ = make_ybus(self.baseMVA, self.bus, self.branch)
+            S_inj = V * np.conj(Ybus @ V)
+            
+            P_inj = S_inj.real * self.baseMVA
+            Q_inj = S_inj.imag * self.baseMVA
+            
+            # Find online generators
+            online_gens = np.where(self.gen[:, GEN_STATUS] > 0)[0]
+            
+            # Group online generators by bus index
+            gens_by_bus = {}
+            for g in online_gens:
+                bus_idx = int(self.gen[g, GEN_BUS])
+                if bus_idx not in gens_by_bus:
+                    gens_by_bus[bus_idx] = []
+                gens_by_bus[bus_idx].append(g)
+                
+            for bus_idx, gens in gens_by_bus.items():
+                bus_type = int(self.bus[bus_idx, BUS_TYPE])
+                
+                # Update QG for PV and Slack buses
+                if bus_type in [PV, REF]:
+                    q_gen_total = Q_inj[bus_idx] + self.bus[bus_idx, QD]
+                    
+                    if len(gens) == 1:
+                        self.gen[gens[0], QG] = q_gen_total
+                    else:
+                        q_min_sum = sum(self.gen[g, QMIN] for g in gens)
+                        q_max_sum = sum(self.gen[g, QMAX] for g in gens)
+                        q_range_sum = q_max_sum - q_min_sum
+                        
+                        if q_range_sum > 0:
+                            for g in gens:
+                                g_range = self.gen[g, QMAX] - self.gen[g, QMIN]
+                                self.gen[g, QG] = self.gen[g, QMIN] + (q_gen_total - q_min_sum) * (g_range / q_range_sum)
+                        else:
+                            for g in gens:
+                                self.gen[g, QG] = q_gen_total / len(gens)
+                                
+                # Update PG for Slack (REF) buses
+                if bus_type == REF:
+                    p_gen_total = P_inj[bus_idx] + self.bus[bus_idx, PD]
+                    
+                    if len(gens) == 1:
+                        self.gen[gens[0], PG] = p_gen_total
+                    else:
+                        mbase_sum = sum(self.gen[g, MBASE] for g in gens)
+                        if mbase_sum > 0:
+                            for g in gens:
+                                self.gen[g, PG] = p_gen_total * (self.gen[g, MBASE] / mbase_sum)
+                        else:
+                            for g in gens:
+                                self.gen[g, PG] = p_gen_total / len(gens)
+        except Exception as e:
+            print(f"Warning: Failed to update generator active/reactive power: {e}")
+
     def copy(self):
         import copy
         return copy.deepcopy(self)

@@ -158,6 +158,8 @@ def run_hepf(case, max_order=14, verbose=True):
     case.branch[:, PT] = pt
     case.branch[:, QT] = qt
     
+    case.update_generator_power()
+    
     return case, converged
 
 def pade_approximant(coeffs, s=1.0):

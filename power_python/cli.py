@@ -227,65 +227,243 @@ def load_case_by_id(case_id):
     return case
 
 def export_results_excel(case, filename, analysis, extra_results=None):
-    with pd.ExcelWriter(filename) as writer:
-        if hasattr(case, 'bus') and case.bus is not None:
-            # Bus
-            bus_df = pd.DataFrame({
-                "Bus_ID": case.external_bus_ids.astype(int),
-                "Type": case.bus[:, BUS_TYPE].astype(int),
-                "VM_pu": case.bus[:, VM],
-                "VA_deg": case.bus[:, VA],
-                "PD_MW": case.bus[:, PD],
-                "QD_MVAr": case.bus[:, QD]
-            })
-            bus_df.to_excel(writer, sheet_name='Bus_Results', index=False)
+    import openpyxl
+    from openpyxl.styles import Font, Alignment, PatternFill
+    
+    # Re-calculate generator PG and QG outputs first to ensure they are up to date in the exported case
+    case.update_generator_power()
+    
+    with pd.ExcelWriter(filename, engine='openpyxl') as writer:
+        # Write General sheet if it has baseMVA
+        if hasattr(case, 'baseMVA'):
+            gen_df = pd.DataFrame({"baseMVA": [case.baseMVA]})
+            gen_df.to_excel(writer, sheet_name='General', index=False)
             
-            # Gen
+        if hasattr(case, 'bus') and case.bus is not None and len(case.bus) > 0:
+            # Bus sheet in MATLAB MATPOWER format
+            bus_data = {
+                "BUS_I": case.external_bus_ids.astype(int),
+                "TYPE": case.bus[:, BUS_TYPE].astype(int),
+                "PD": case.bus[:, PD],
+                "QD": case.bus[:, QD],
+                "GS": case.bus[:, GS],
+                "BS": case.bus[:, BS],
+                "BUS_AREA": case.bus[:, BUS_AREA].astype(int),
+                "VM": case.bus[:, VM],
+                "VA": case.bus[:, VA],
+                "BASE_KV": case.bus[:, BASE_KV],
+                "ZONE": case.bus[:, ZONE].astype(int),
+                "VMAX": case.bus[:, VMAX],
+                "VMIN": case.bus[:, VMIN],
+            }
+            if case.bus.shape[1] > 13:
+                # Add OPF variables if they exist in the matrix
+                bus_data["LAM_P"] = case.bus[:, LAM_P]
+                bus_data["LAM_Q"] = case.bus[:, LAM_Q]
+                bus_data["MU_VMAX"] = case.bus[:, MU_VMAX]
+                bus_data["MU_VMIN"] = case.bus[:, MU_VMIN]
+                
+            bus_df = pd.DataFrame(bus_data)
+            bus_df.to_excel(writer, sheet_name='Bus', index=False)
+            
+            # Generator sheet in MATLAB MATPOWER format
             gen_bus_ids = [int(case.external_bus_ids[int(b)]) for b in case.gen[:, GEN_BUS]]
-            gen_df = pd.DataFrame({
-                "Gen_ID": np.arange(1, len(case.gen) + 1),
-                "Bus_ID": gen_bus_ids,
-                "PG_MW": case.gen[:, PG],
-                "QG_MVAr": case.gen[:, QG],
-                "PMAX_MW": case.gen[:, PMAX],
-                "PMIN_MW": case.gen[:, PMIN],
-                "QMAX_MVAr": case.gen[:, QMAX],
-                "QMIN_MVAr": case.gen[:, QMIN]
-            })
-            gen_df.to_excel(writer, sheet_name='Gen_Results', index=False)
+            gen_data = {
+                "GEN_BUS": gen_bus_ids,
+                "PG": case.gen[:, PG],
+                "QG": case.gen[:, QG],
+                "QMAX": case.gen[:, QMAX],
+                "QMIN": case.gen[:, QMIN],
+                "VG": case.gen[:, VG],
+                "MBASE": case.gen[:, MBASE],
+                "GEN_STATUS": case.gen[:, GEN_STATUS].astype(int),
+                "PMAX": case.gen[:, PMAX],
+                "PMIN": case.gen[:, PMIN],
+                "PC1": case.gen[:, PC1],
+                "PC2": case.gen[:, PC2],
+                "QC1MIN": case.gen[:, QC1MIN],
+                "QC1MAX": case.gen[:, QC1MAX],
+                "QC2MIN": case.gen[:, QC2MIN],
+                "QC2MAX": case.gen[:, QC2MAX],
+                "RAMP_AGC": case.gen[:, RAMP_AGC],
+                "RAMP_10": case.gen[:, RAMP_10],
+                "RAMP_30": case.gen[:, RAMP_30],
+                "RAMP_Q": case.gen[:, RAMP_Q],
+                "APF": case.gen[:, APF],
+            }
+            if case.gen.shape[1] > 21:
+                gen_data["MU_PMAX"] = case.gen[:, MU_PMAX]
+                gen_data["MU_PMIN"] = case.gen[:, MU_PMIN]
+                gen_data["MU_QMAX"] = case.gen[:, MU_QMAX]
+                gen_data["MU_QMIN"] = case.gen[:, MU_QMIN]
+                
+            gen_df = pd.DataFrame(gen_data)
+            gen_df.to_excel(writer, sheet_name='Generator', index=False)
             
-            # Branch
+            # Branch sheet in MATLAB MATPOWER format
             f_bus_ids = [int(case.external_bus_ids[int(b)]) for b in case.branch[:, F_BUS]]
             t_bus_ids = [int(case.external_bus_ids[int(b)]) for b in case.branch[:, T_BUS]]
-            branch_df = pd.DataFrame({
-                "Branch_ID": np.arange(1, len(case.branch) + 1),
-                "From_Bus": f_bus_ids,
-                "To_Bus": t_bus_ids,
-                "PF_MW": case.branch[:, PF],
-                "QF_MVAr": case.branch[:, QF],
-                "PT_MW": case.branch[:, PT],
-                "QT_MVAr": case.branch[:, QT],
-                "RATE_A_MW": case.branch[:, RATE_A]
-            })
-            branch_df.to_excel(writer, sheet_name='Branch_Results', index=False)
+            branch_data = {
+                "F_BUS": f_bus_ids,
+                "T_BUS": t_bus_ids,
+                "BR_R": case.branch[:, BR_R],
+                "BR_X": case.branch[:, BR_X],
+                "BR_B": case.branch[:, BR_B],
+                "RATE_A": case.branch[:, RATE_A],
+                "RATE_B": case.branch[:, RATE_B],
+                "RATE_C": case.branch[:, RATE_C],
+                "TAP": case.branch[:, TAP],
+                "SHIFT": case.branch[:, SHIFT],
+                "BR_STATUS": case.branch[:, BR_STATUS].astype(int),
+                "ANGMIN": case.branch[:, ANGMIN],
+                "ANGMAX": case.branch[:, ANGMAX],
+                "PF": case.branch[:, PF],
+                "QF": case.branch[:, QF],
+                "PT": case.branch[:, PT],
+                "QT": case.branch[:, QT],
+            }
+            if case.branch.shape[1] > 17:
+                branch_data["MU_SF"] = case.branch[:, MU_SF]
+                branch_data["MU_ST"] = case.branch[:, MU_ST]
+                branch_data["MU_ANGMIN"] = case.branch[:, MU_ANGMIN]
+                branch_data["MU_ANGMAX"] = case.branch[:, MU_ANGMAX]
+                
+            branch_df = pd.DataFrame(branch_data)
+            branch_df.to_excel(writer, sheet_name='Branch', index=False)
             
-        if hasattr(case, 'bus3p') and case.bus3p is not None:
+            # Generator Cost sheet if present and not empty
+            if hasattr(case, 'gencost') and case.gencost is not None and len(case.gencost) > 0:
+                gencost_cols = ["MODEL", "STARTUP", "SHUTDOWN", "NCOST"] + [f"COST_{i}" for i in range(case.gencost.shape[1] - 4)]
+                num_cols = min(len(gencost_cols), case.gencost.shape[1])
+                gencost_df = pd.DataFrame(case.gencost[:, :num_cols], columns=gencost_cols[:num_cols])
+                # Format integer columns
+                for col in ["MODEL", "NCOST"]:
+                    if col in gencost_df:
+                        gencost_df[col] = gencost_df[col].astype(int)
+                gencost_df.to_excel(writer, sheet_name='Generator Cost', index=False)
+                
+        # Write 3-Phase sheets if present
+        if hasattr(case, 'bus3p') and case.bus3p is not None and len(case.bus3p) > 0:
             bus3p_df = pd.DataFrame(case.bus3p, columns=["Bus_ID", "Type", "BaseKV", "Vm_a", "Vm_b", "Vm_c", "Va_a", "Va_b", "Va_c"])
-            bus3p_df.to_excel(writer, sheet_name='Bus3P_Results', index=False)
+            bus3p_df.to_excel(writer, sheet_name='Bus3P', index=False)
             
+            if hasattr(case, 'line3p') and case.line3p is not None and len(case.line3p) > 0:
+                pd.DataFrame(case.line3p).to_excel(writer, sheet_name='Line3P', index=False)
+            if hasattr(case, 'xfmr3p') and case.xfmr3p is not None and len(case.xfmr3p) > 0:
+                pd.DataFrame(case.xfmr3p).to_excel(writer, sheet_name='Xfmr3P', index=False)
+            if hasattr(case, 'load3p') and case.load3p is not None and len(case.load3p) > 0:
+                pd.DataFrame(case.load3p).to_excel(writer, sheet_name='Load3P', index=False)
+            if hasattr(case, 'gen3p') and case.gen3p is not None and len(case.gen3p) > 0:
+                pd.DataFrame(case.gen3p).to_excel(writer, sheet_name='Gen3P', index=False)
+            if hasattr(case, 'lc') and case.lc is not None and len(case.lc) > 0:
+                pd.DataFrame(case.lc).to_excel(writer, sheet_name='LineConst', index=False)
+                
+        # Write Extra / Analysis results
         if extra_results is not None:
             if isinstance(extra_results, pd.DataFrame):
-                extra_results.to_excel(writer, sheet_name='Extra_Results', index=False)
+                extra_results.to_excel(writer, sheet_name='Analysis_Results', index=False)
             elif isinstance(extra_results, dict):
                 for k, v in extra_results.items():
+                    sheet_name = f"Analysis_{k}"[:31]
                     if isinstance(v, pd.DataFrame):
-                        v.to_excel(writer, sheet_name=k[:31], index=False)
+                        v.to_excel(writer, sheet_name=sheet_name, index=False)
                     else:
-                        pd.DataFrame(v).to_excel(writer, sheet_name=k[:31], index=False)
-                        
+                        pd.DataFrame(v).to_excel(writer, sheet_name=sheet_name, index=False)
+
+    # Re-open the excel file with openpyxl to apply gorgeous styling & formatting
+    wb = openpyxl.load_workbook(filename)
+    
+    # Styles definition
+    hdr_font = Font(name="Segoe UI", size=11, bold=True, color="FFFFFF")
+    hdr_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+    data_font = Font(name="Segoe UI", size=10)
+    
+    center_align = Alignment(horizontal="center", vertical="center")
+    right_align = Alignment(horizontal="right", vertical="center")
+    left_align = Alignment(horizontal="left", vertical="center")
+    
+    # Columns that should be centered (integer IDs, types, codes)
+    center_cols = {
+        "BUS_I", "TYPE", "BUS_AREA", "ZONE", "GEN_BUS", "GEN_STATUS",
+        "F_BUS", "T_BUS", "BR_STATUS", "MODEL", "NCOST", "Bus_ID", "Type"
+    }
+    
+    # Columns that should be formatted as 4-decimal floats (voltage magnitudes)
+    v_cols = {"VM", "VMAX", "VMIN", "VG", "Vm_a", "Vm_b", "Vm_c"}
+    
+    # Columns that should be formatted as 2-decimal floats (angles)
+    ang_cols = {"VA", "Va_a", "Va_b", "Va_c", "SHIFT", "ANGMIN", "ANGMAX"}
+    
+    for sheet_name in wb.sheetnames:
+        ws = wb[sheet_name]
+        ws.sheet_view.showGridLines = True
+        
+        # Determine number of rows and columns
+        max_row = ws.max_row
+        max_col = ws.max_column
+        
+        if max_row == 0 or max_col == 0:
+            continue
+            
+        # Freeze headers
+        ws.freeze_panes = "A2"
+        
+        # Read header names
+        headers = [ws.cell(row=1, column=c).value for c in range(1, max_col + 1)]
+        
+        # Style Header Row
+        ws.row_dimensions[1].height = 26
+        for c in range(1, max_col + 1):
+            cell = ws.cell(row=1, column=c)
+            cell.font = hdr_font
+            cell.fill = hdr_fill
+            cell.alignment = center_align
+            
+        # Style Data Rows
+        for r in range(2, max_row + 1):
+            ws.row_dimensions[r].height = 20
+            for c in range(1, max_col + 1):
+                cell = ws.cell(row=r, column=c)
+                cell.font = data_font
+                
+                col_name = headers[c - 1]
+                val = cell.value
+                
+                # Check alignment and number formats
+                if col_name in center_cols:
+                    cell.alignment = center_align
+                    if val is not None:
+                        try:
+                            cell.value = int(float(val))
+                            cell.number_format = "0"
+                        except ValueError:
+                            pass
+                elif isinstance(val, (int, float)):
+                    cell.alignment = right_align
+                    if col_name in v_cols:
+                        cell.number_format = "0.0000"
+                    elif col_name in ang_cols:
+                        cell.number_format = "0.00"
+                    else:
+                        cell.number_format = "#,##0.00"
+                else:
+                    cell.alignment = left_align
+                    
+        # Auto-adjust column widths with some padding
+        for c in range(1, max_col + 1):
+            col_letter = openpyxl.utils.get_column_letter(c)
+            max_len = 0
+            for r in range(1, max_row + 1):
+                val = ws.cell(row=r, column=c).value
+                if val is not None:
+                    max_len = max(max_len, len(str(val)))
+            ws.column_dimensions[col_letter].width = max(max_len + 4, 12)
+            
+    wb.save(filename)
     print(f"Results exported to Excel: {filename}")
 
 def export_results_csv(case, prefix, extra_results=None):
+    case.update_generator_power()
     if hasattr(case, 'bus') and case.bus is not None:
         bus_df = pd.DataFrame({
             "Bus_ID": case.external_bus_ids.astype(int),

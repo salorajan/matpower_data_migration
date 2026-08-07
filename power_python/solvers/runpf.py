@@ -105,4 +105,6 @@ def run_power_flow(case, algorithm='nr', enforce_q_limits=False, tol=1e-8, max_i
     case.branch[:, PF], case.branch[:, QF] = pf, qf
     case.branch[:, PT], case.branch[:, QT] = pt, qt
     
+    case.update_generator_power()
+    
     return case, True

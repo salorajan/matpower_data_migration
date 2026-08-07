@@ -53,7 +53,7 @@ PowerPython contains **23 analytical solvers** grouped by standard MATPOWER pari
 
 ## 4.0 Dual-Mode Usage
 
-Detailed instructions are available in the [User Manual](file:///C:/users/robert/power/matpower_data_migration/manual.md).
+Detailed instructions are available in the [User Manual](manual.md).
 
 ### 4.1 CLI Mode Examples
 Registering console scripts makes the solvers directly executable from the terminal:
@@ -61,6 +61,7 @@ Registering console scripts makes the solvers directly executable from the termi
   ```bash
   acpf case14 1e-4 excel
   ```
+  *(Generates `acpf_case14.xlsx` containing solved bus voltages, line flows, and generator active/reactive outputs in MATLAB MATPOWER format).*
 - **Run HEPF on Case 9, export to Word Report (DOCX):**
   ```bash
   hepf case9 docx
@@ -70,19 +71,41 @@ Registering console scripts makes the solvers directly executable from the termi
   hepf --help docx
   ```
 
-### 4.2 Scripting Mode Example
-Import the package directly in your custom Python scripts:
+### 4.2 Scripting Mode Example & Programmatic Export
+Import the package directly in your custom Python scripts and export results programmatically:
 ```python
 import power_python as pp
 
+# 1. Load the case
 case = pp.PowerCase()
 case.load_from_json("outputs/json/case9.json")
 
-# Run Holomorphic Embedding
-case, success = pp.run_hepf(case)
+# 2. Run the AC Power Flow
+case, success = pp.run_power_flow(case)
+
 if success:
     print(f"Bus 1 Voltage Magnitude: {case.bus[0, pp.VM]} p.u.")
+    
+    # 3. Export solved results to Excel in MATLAB MATPOWER format
+    pp.export_results_excel(case, "acpf_results.xlsx", "acpf")
+    
+    # Or export to CSV
+    pp.export_results_csv(case, "acpf_results", "acpf")
 ```
+
+### 4.3 Solved Outputs & Format details
+When you run any solver, the solved parameters are written directly into the `PowerCase` matrices, matching standard **MATLAB MATPOWER formats**:
+
+#### 4.3.1 Excel (.xlsx) Output Structure
+Exporting to Excel (`excel`/`xlsx`) generates a styled workbook with the following sheets and columns matching the standard MATPOWER matrices:
+*   **`General`**: Holds the `baseMVA` scalar value.
+*   **`Bus`**: Holds all 17 standard bus columns. Solved voltages are updated in `VM` and `VA`. If OPF is solved, Lagrange multipliers (`LAM_P`, `LAM_Q`, `MU_VMAX`, `MU_VMIN`) are included.
+*   **`Generator`**: Holds all 25 standard generator columns. Active (`PG`) and reactive (`QG`) power generation outputs are updated at the PV and slack buses to balance load and losses. If OPF is solved, Kuhn-Tucker limits multipliers (`MU_PMAX`, `MU_PMIN`, `MU_QMAX`, `MU_QMIN`) are included.
+*   **`Branch`**: Holds all 21 standard branch columns. Active and reactive branch power flows (`PF`, `QF`, `PT`, `QT`) are updated at both the "from" and "to" ends. If OPF is solved, constraint multipliers (`MU_SF`, `MU_ST`, `MU_ANGMIN`, `MU_ANGMAX`) are included.
+*   **`Generator Cost`**: (If present) Holds the piecewise linear or polynomial generator cost parameters (`MODEL`, `STARTUP`, `SHUTDOWN`, `NCOST`, `COST_0`, `COST_1`, ...).
+*   **`Bus3P` / `Line3P` / `Xfmr3P` / `Load3P` / `Gen3P` / `LineConst`**: (For 3-phase cases) Holds the solved phase voltages and line specifications.
+
+The output sheets are styled with a clean `Segoe UI` font, header highlights (navy blue fill, white bold text), auto-adjusted columns to prevent truncation, and customized numeric styles (e.g. 4 decimals for voltages, 2 decimals for angles, and thousands separators for power).
 
 ---
 
