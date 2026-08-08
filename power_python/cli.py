@@ -240,17 +240,28 @@ def export_results_excel(case, filename, analysis, extra_results=None):
             gen_df.to_excel(writer, sheet_name='General', index=False)
             
         if hasattr(case, 'bus') and case.bus is not None and len(case.bus) > 0:
-            # Bus sheet in MATLAB MATPOWER format
+            # Calculate generation per bus
+            gen_p = np.zeros(len(case.bus))
+            gen_q = np.zeros(len(case.bus))
+            for i in range(len(case.gen)):
+                if case.gen[i, GEN_STATUS] > 0:
+                    bus_idx = int(case.gen[i, GEN_BUS])
+                    gen_p[bus_idx] += case.gen[i, PG]
+                    gen_q[bus_idx] += case.gen[i, QG]
+            
+            # Bus sheet in MATLAB MATPOWER format, enhanced with active/reactive generation
             bus_data = {
                 "BUS_I": case.external_bus_ids.astype(int),
                 "TYPE": case.bus[:, BUS_TYPE].astype(int),
+                "VM": case.bus[:, VM],
+                "VA": case.bus[:, VA],
                 "PD": case.bus[:, PD],
                 "QD": case.bus[:, QD],
+                "PG": gen_p,
+                "QG": gen_q,
                 "GS": case.bus[:, GS],
                 "BS": case.bus[:, BS],
                 "BUS_AREA": case.bus[:, BUS_AREA].astype(int),
-                "VM": case.bus[:, VM],
-                "VA": case.bus[:, VA],
                 "BASE_KV": case.bus[:, BASE_KV],
                 "ZONE": case.bus[:, ZONE].astype(int),
                 "VMAX": case.bus[:, VMAX],
@@ -330,6 +341,40 @@ def export_results_excel(case, filename, analysis, extra_results=None):
                 
             branch_df = pd.DataFrame(branch_data)
             branch_df.to_excel(writer, sheet_name='Branch', index=False)
+            
+            # Line Flows sheet with detailed flow and loss data (to/fro flows, individual line losses, and total losses)
+            p_from = case.branch[:, PF]
+            q_from = case.branch[:, QF]
+            p_to = case.branch[:, PT]
+            q_to = case.branch[:, QT]
+            p_loss = p_from + p_to
+            q_loss = q_from + q_to
+            
+            line_flows_data = {
+                "F_BUS": f_bus_ids,
+                "T_BUS": t_bus_ids,
+                "P_FROM_TO": p_from,
+                "Q_FROM_TO": q_from,
+                "P_TO_FROM": p_to,
+                "Q_TO_FROM": q_to,
+                "P_LOSS": p_loss,
+                "Q_LOSS": q_loss
+            }
+            line_flows_df = pd.DataFrame(line_flows_data)
+            
+            # Append Total Row
+            total_row = {
+                "F_BUS": "TOTAL",
+                "T_BUS": "",
+                "P_FROM_TO": np.nan,
+                "Q_FROM_TO": np.nan,
+                "P_TO_FROM": np.nan,
+                "Q_TO_FROM": np.nan,
+                "P_LOSS": np.sum(p_loss),
+                "Q_LOSS": np.sum(q_loss)
+            }
+            line_flows_df = pd.concat([line_flows_df, pd.DataFrame([total_row])], ignore_index=True)
+            line_flows_df.to_excel(writer, sheet_name='Line Flows', index=False)
             
             # Generator Cost sheet if present and not empty
             if hasattr(case, 'gencost') and case.gencost is not None and len(case.gencost) > 0:
@@ -449,6 +494,13 @@ def export_results_excel(case, filename, analysis, extra_results=None):
                 else:
                     cell.alignment = left_align
                     
+        # Special styling for total rows if sheet is 'Line Flows'
+        if sheet_name == 'Line Flows':
+            total_font = Font(name="Segoe UI", size=10, bold=True)
+            for c in range(1, max_col + 1):
+                cell = ws.cell(row=max_row, column=c)
+                cell.font = total_font
+                
         # Auto-adjust column widths with some padding
         for c in range(1, max_col + 1):
             col_letter = openpyxl.utils.get_column_letter(c)
@@ -465,10 +517,24 @@ def export_results_excel(case, filename, analysis, extra_results=None):
 def export_results_csv(case, prefix, extra_results=None):
     case.update_generator_power()
     if hasattr(case, 'bus') and case.bus is not None:
+        # Calculate generation per bus
+        gen_p = np.zeros(len(case.bus))
+        gen_q = np.zeros(len(case.bus))
+        for i in range(len(case.gen)):
+            if case.gen[i, GEN_STATUS] > 0:
+                bus_idx = int(case.gen[i, GEN_BUS])
+                gen_p[bus_idx] += case.gen[i, PG]
+                gen_q[bus_idx] += case.gen[i, QG]
+
         bus_df = pd.DataFrame({
             "Bus_ID": case.external_bus_ids.astype(int),
+            "TYPE": case.bus[:, BUS_TYPE].astype(int),
             "VM_pu": case.bus[:, VM],
-            "VA_deg": case.bus[:, VA]
+            "VA_deg": case.bus[:, VA],
+            "PD_MW": case.bus[:, PD],
+            "QD_MVAr": case.bus[:, QD],
+            "PG_MW": gen_p,
+            "QG_MVAr": gen_q
         })
         bus_df.to_csv(f"{prefix}_bus.csv", index=False)
         
@@ -485,11 +551,50 @@ def export_results_csv(case, prefix, extra_results=None):
         branch_df = pd.DataFrame({
             "From_Bus": f_bus_ids,
             "To_Bus": t_bus_ids,
-            "P_MW": case.branch[:, PF],
-            "Q_MVAr": case.branch[:, QF]
+            "BR_R": case.branch[:, BR_R],
+            "BR_X": case.branch[:, BR_X],
+            "BR_B": case.branch[:, BR_B],
+            "RATE_A": case.branch[:, RATE_A],
+            "PF_MW": case.branch[:, PF],
+            "QF_MVAr": case.branch[:, QF],
+            "PT_MW": case.branch[:, PT],
+            "QT_MVAr": case.branch[:, QT]
         })
         branch_df.to_csv(f"{prefix}_branch.csv", index=False)
-        print(f"Results exported to CSV: {prefix}_bus.csv, {prefix}_gen.csv, {prefix}_branch.csv")
+
+        # Line Flows & Losses CSV
+        p_from = case.branch[:, PF]
+        q_from = case.branch[:, QF]
+        p_to = case.branch[:, PT]
+        q_to = case.branch[:, QT]
+        p_loss = p_from + p_to
+        q_loss = q_from + q_to
+        
+        flows_df = pd.DataFrame({
+            "From_Bus": f_bus_ids,
+            "To_Bus": t_bus_ids,
+            "P_FROM_TO_MW": p_from,
+            "Q_FROM_TO_MVAR": q_from,
+            "P_TO_FROM_MW": p_to,
+            "Q_TO_FROM_MVAR": q_to,
+            "P_LOSS_MW": p_loss,
+            "Q_LOSS_MVAR": q_loss
+        })
+        
+        total_row = {
+            "From_Bus": "TOTAL",
+            "To_Bus": "",
+            "P_FROM_TO_MW": np.nan,
+            "Q_FROM_TO_MVAR": np.nan,
+            "P_TO_FROM_MW": np.nan,
+            "Q_TO_FROM_MVAR": np.nan,
+            "P_LOSS_MW": np.sum(p_loss),
+            "Q_LOSS_MVAR": np.sum(q_loss)
+        }
+        flows_df = pd.concat([flows_df, pd.DataFrame([total_row])], ignore_index=True)
+        flows_df.to_csv(f"{prefix}_flows.csv", index=False)
+        
+        print(f"Results exported to CSV: {prefix}_bus.csv, {prefix}_gen.csv, {prefix}_branch.csv, {prefix}_flows.csv")
         
     if hasattr(case, 'bus3p') and case.bus3p is not None:
         bus3p_df = pd.DataFrame(case.bus3p, columns=["Bus_ID", "Type", "BaseKV", "Vm1", "Vm2", "Vm3", "Va1", "Va2", "Va3"])
@@ -503,6 +608,842 @@ def export_results_csv(case, prefix, extra_results=None):
             for k, v in extra_results.items():
                 pd.DataFrame(v).to_csv(f"{prefix}_{k}.csv", index=False)
         print(f"Extra results exported to CSV.")
+
+def export_results_html(case, filename, analysis, success, accuracy, extra_results=None, extra_info=None):
+    # Calculate generation per bus
+    gen_p = np.zeros(len(case.bus)) if (hasattr(case, 'bus') and case.bus is not None) else np.zeros(0)
+    gen_q = np.zeros(len(case.bus)) if (hasattr(case, 'bus') and case.bus is not None) else np.zeros(0)
+    if hasattr(case, 'gen') and case.gen is not None and len(gen_p) > 0:
+        for i in range(len(case.gen)):
+            if case.gen[i, GEN_STATUS] > 0:
+                bus_idx = int(case.gen[i, GEN_BUS])
+                if bus_idx < len(gen_p):
+                    gen_p[bus_idx] += case.gen[i, PG]
+                    gen_q[bus_idx] += case.gen[i, QG]
+
+    analysis_upper = analysis.upper()
+    status_text = "SUCCESS" if success else "FAILED"
+    status_badge_class = "badge-success" if success else "badge-error"
+    accuracy_str = f"{accuracy:.2e}"
+    try:
+        case_id = os.path.basename(filename).split('_', 1)[1].rsplit('.', 1)[0]
+    except Exception:
+        case_id = "Unknown"
+
+    # Build Bus Table HTML
+    if hasattr(case, 'bus3p') and case.bus3p is not None and len(case.bus3p) > 0:
+        bus_rows_html = []
+        for i in range(len(case.bus3p)):
+            bus_id = int(case.bus3p[i, 0])
+            vmag_a = case.bus3p[i, 3]
+            vmag_b = case.bus3p[i, 4]
+            vmag_c = case.bus3p[i, 5]
+            vang_a = case.bus3p[i, 6]
+            vang_b = case.bus3p[i, 7]
+            vang_c = case.bus3p[i, 8]
+            
+            row = f"""<tr>
+                <td class="text-center">{bus_id}</td>
+                <td class="text-right">{vmag_a:.4f}</td>
+                <td class="text-right">{vmag_b:.4f}</td>
+                <td class="text-right">{vmag_c:.4f}</td>
+                <td class="text-right">{vang_a:.2f}</td>
+                <td class="text-right">{vang_b:.2f}</td>
+                <td class="text-right">{vang_c:.2f}</td>
+            </tr>"""
+            bus_rows_html.append(row)
+        bus_rows_str = "\n".join(bus_rows_html)
+        bus_table_html = f"""<table id="bus-table">
+            <thead>
+                <tr>
+                    <th scope="col" class="text-center">Bus ID</th>
+                    <th scope="col" class="text-right">Va Mag (pu)</th>
+                    <th scope="col" class="text-right">Vb Mag (pu)</th>
+                    <th scope="col" class="text-right">Vc Mag (pu)</th>
+                    <th scope="col" class="text-right">Va Ang (deg)</th>
+                    <th scope="col" class="text-right">Vb Ang (deg)</th>
+                    <th scope="col" class="text-right">Vc Ang (deg)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {bus_rows_str}
+            </tbody>
+        </table>"""
+    else:
+        bus_rows_html = []
+        limit = len(case.bus)
+        for i in range(limit):
+            bus_id = int(case.external_bus_ids[i])
+            bus_t = int(case.bus[i, BUS_TYPE])
+            type_str = "PQ" if bus_t == PQ else "PV" if bus_t == PV else "REF" if bus_t == REF else "Isolated"
+            vm = case.bus[i, VM]
+            va = case.bus[i, VA]
+            pd_val = case.bus[i, PD]
+            qd_val = case.bus[i, QD]
+            gp = gen_p[i]
+            gq = gen_q[i]
+            
+            row = f"""<tr>
+                <td class="text-center">{bus_id}</td>
+                <td class="text-center"><span class="badge" style="background-color: var(--bg-tertiary); color: var(--text-secondary);">{type_str}</span></td>
+                <td class="text-right">{vm:.4f}</td>
+                <td class="text-right">{va:.2f}</td>
+                <td class="text-right">{pd_val:.2f}</td>
+                <td class="text-right">{qd_val:.2f}</td>
+                <td class="text-right">{gp:.2f}</td>
+                <td class="text-right">{gq:.2f}</td>
+            </tr>"""
+            bus_rows_html.append(row)
+        
+        bus_rows_str = "\n".join(bus_rows_html)
+        bus_table_html = f"""<table id="bus-table">
+            <thead>
+                <tr>
+                    <th scope="col" class="text-center">Bus ID</th>
+                    <th scope="col" class="text-center">Type</th>
+                    <th scope="col" class="text-right">V Magnitude (pu)</th>
+                    <th scope="col" class="text-right">V Angle (deg)</th>
+                    <th scope="col" class="text-right">Load P (MW)</th>
+                    <th scope="col" class="text-right">Load Q (MVAr)</th>
+                    <th scope="col" class="text-right">Gen P (MW)</th>
+                    <th scope="col" class="text-right">Gen Q (MVAr)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {bus_rows_str}
+            </tbody>
+        </table>"""
+
+    # Build Generator Table HTML
+    gen_tab_btn = ""
+    gen_table_content = ""
+    if hasattr(case, 'gen') and case.gen is not None and len(case.gen) > 0:
+        gen_tab_btn = """<button id="tab-btn-gen" class="tab-btn" onclick="switchTab('gen')" aria-selected="false" aria-controls="tab-content-gen">Generators</button>"""
+        gen_rows_html = []
+        for i in range(len(case.gen)):
+            gen_id = i + 1
+            bus_id = int(case.external_bus_ids[int(case.gen[i, GEN_BUS])])
+            pg = case.gen[i, PG]
+            qg = case.gen[i, QG]
+            
+            row = f"""<tr>
+                <td class="text-center">{gen_id}</td>
+                <td class="text-center">{bus_id}</td>
+                <td class="text-right">{pg:.2f}</td>
+                <td class="text-right">{qg:.2f}</td>
+            </tr>"""
+            gen_rows_html.append(row)
+            
+        gen_rows_str = "\n".join(gen_rows_html)
+        gen_table_content = f"""<div id="tab-content-gen" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-gen">
+            <div class="table-container">
+                <table id="gen-table">
+                    <thead>
+                        <tr>
+                            <th scope="col" class="text-center">Gen ID</th>
+                            <th scope="col" class="text-center">Bus ID</th>
+                            <th scope="col" class="text-right">PG (MW)</th>
+                            <th scope="col" class="text-right">QG (MVAr)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {gen_rows_str}
+                    </tbody>
+                </table>
+            </div>
+        </div>"""
+
+    # Build Line Flows Table HTML
+    flows_tab_btn = ""
+    flows_table_content = ""
+    if hasattr(case, 'branch') and case.branch is not None and len(case.branch) > 0:
+        flows_tab_btn = """<button id="tab-btn-flows" class="tab-btn" onclick="switchTab('flows')" aria-selected="false" aria-controls="tab-content-flows">Line Flows & Losses</button>"""
+        flow_rows_html = []
+        for i in range(len(case.branch)):
+            f_bus = int(case.external_bus_ids[int(case.branch[i, F_BUS])])
+            t_bus = int(case.external_bus_ids[int(case.branch[i, T_BUS])])
+            pf = case.branch[i, PF]
+            qf = case.branch[i, QF]
+            pt = case.branch[i, PT]
+            qt = case.branch[i, QT]
+            pl = pf + pt
+            ql = qf + qt
+            
+            row = f"""<tr>
+                <td class="text-center">{f_bus}</td>
+                <td class="text-center">{t_bus}</td>
+                <td class="text-right">{pf:.2f}</td>
+                <td class="text-right">{qf:.2f}</td>
+                <td class="text-right">{pt:.2f}</td>
+                <td class="text-right">{qt:.2f}</td>
+                <td class="text-right">{pl:.2f}</td>
+                <td class="text-right">{ql:.2f}</td>
+            </tr>"""
+            flow_rows_html.append(row)
+            
+        # Add Total Row
+        full_p_loss = np.sum(case.branch[:, PF] + case.branch[:, PT])
+        full_q_loss = np.sum(case.branch[:, QF] + case.branch[:, QT])
+        total_row_html = f"""<tr class="total-row">
+            <td class="text-center">Total</td>
+            <td class="text-center"></td>
+            <td class="text-right"></td>
+            <td class="text-right"></td>
+            <td class="text-right"></td>
+            <td class="text-right"></td>
+            <td class="text-right">{full_p_loss:.2f}</td>
+            <td class="text-right">{full_q_loss:.2f}</td>
+        </tr>"""
+        flow_rows_html.append(total_row_html)
+        
+        flow_rows_str = "\n".join(flow_rows_html)
+        flows_table_content = f"""<div id="tab-content-flows" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-flows">
+            <div class="table-container">
+                <table id="flows-table">
+                    <thead>
+                        <tr>
+                            <th scope="col" class="text-center">From Bus</th>
+                            <th scope="col" class="text-center">To Bus</th>
+                            <th scope="col" class="text-right">P From->To (MW)</th>
+                            <th scope="col" class="text-right">Q From->To (MVAr)</th>
+                            <th scope="col" class="text-right">P To->From (MW)</th>
+                            <th scope="col" class="text-right">Q To->From (MVAr)</th>
+                            <th scope="col" class="text-right">P Loss (MW)</th>
+                            <th scope="col" class="text-right">Q Loss (MVAr)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {flow_rows_str}
+                    </tbody>
+                </table>
+            </div>
+        </div>"""
+
+    # Build System Quantities Card
+    system_quantities_card = ""
+    if hasattr(case, 'bus') and case.bus is not None and len(case.bus) > 0:
+        vm = case.bus[:, VM]
+        p_loss = np.sum(case.branch[:, PF] + case.branch[:, PT])
+        q_loss = np.sum(case.branch[:, QF] + case.branch[:, QT])
+        p_gen = np.sum(case.gen[:, PG]) if (hasattr(case, 'gen') and case.gen is not None) else 0.0
+        
+        system_quantities_card = f"""<div class="card">
+            <h2>
+                <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M3 3a1 1 0 000 2v8a2 2 0 002 2h2.586l-1.293 1.293a1 1 0 101.414 1.414L9.414 15H10.586l1.707 1.707a1 1 0 001.414-1.414L12.414 15H15a2 2 0 002-2V5a1 1 0 00-2-2H3zm12 10H5V5h10v8z" clip-rule="evenodd"></path></svg>
+                System Grid Metrics
+            </h2>
+            <ul class="metrics-list">
+                <li>
+                    <span class="label">Voltage Range</span>
+                    <span class="value">Min: {np.min(vm):.4f} | Max: {np.max(vm):.4f} p.u.</span>
+                </li>
+                <li>
+                    <span class="label">Active Power Loss</span>
+                    <span class="value">{p_loss:.4f} MW</span>
+                </li>
+                <li>
+                    <span class="label">Reactive Power Loss</span>
+                    <span class="value">{q_loss:.4f} MVAr</span>
+                </li>
+                <li>
+                    <span class="label">Total Dispatched Generation</span>
+                    <span class="value">{p_gen:.2f} MW</span>
+                </li>
+            </ul>
+        </div>"""
+
+    # Build extra info metrics
+    extra_summary_rows = ""
+    if extra_info:
+        rows_list = []
+        for k, v in extra_info.items():
+            rows_list.append(f"""<li>
+                <span class="label">{k}</span>
+                <span class="value">{v}</span>
+            </li>""")
+        extra_summary_rows = "\n".join(rows_list)
+
+    # Build extra / optimization results tab
+    extra_tab_btn = ""
+    extra_table_content = ""
+    if extra_results is not None:
+        extra_tab_btn = """<button id="tab-btn-extra" class="tab-btn" onclick="switchTab('extra')" aria-selected="false" aria-controls="tab-content-extra">Optimization / Extra Outputs</button>"""
+        
+        if isinstance(extra_results, pd.DataFrame):
+            headers_html = "".join([f'<th scope="col" class="text-center">{col}</th>' for col in extra_results.columns])
+            rows_html = []
+            for r_idx in range(min(20, len(extra_results))):
+                cells_html = "".join([f'<td class="text-right">{extra_results.iloc[r_idx, c_idx]}</td>' for c_idx in range(len(extra_results.columns))])
+                rows_html.append(f"<tr>{cells_html}</tr>")
+            rows_str = "\n".join(rows_html)
+            extra_table_content = f"""<div id="tab-content-extra" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-extra">
+                <div class="table-container">
+                    <table id="extra-table">
+                        <thead>
+                            <tr>{headers_html}</tr>
+                        </thead>
+                        <tbody>
+                            {rows_str}
+                        </tbody>
+                    </table>
+                </div>
+            </div>"""
+        elif isinstance(extra_results, dict):
+            dict_rows = []
+            for k, v in extra_results.items():
+                dict_rows.append(f"""<tr>
+                    <td><strong>{k}</strong></td>
+                    <td>{str(v)[:400]}</td>
+                </tr>""")
+            dict_rows_str = "\n".join(dict_rows)
+            extra_table_content = f"""<div id="tab-content-extra" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-extra">
+                <div class="table-container">
+                    <table id="extra-table-dict">
+                        <thead>
+                            <tr>
+                                <th scope="col">Parameter</th>
+                                <th scope="col">Value</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {dict_rows_str}
+                        </tbody>
+                    </table>
+                </div>
+            </div>"""
+
+    # Semantic HTML template
+    html_content = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Detailed power system simulation report generated by PowerPython.">
+    <title>PowerPython Simulation Report - {analysis_upper}</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Modern CSS Reset & Variable Definitions */
+        :root {{
+            --bg-primary: #f8fafc;
+            --bg-secondary: #ffffff;
+            --bg-tertiary: #f1f5f9;
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --text-muted: #64748b;
+            --accent: #0f766e;
+            --accent-light: #ccfbf1;
+            --accent-hover: #115e59;
+            --success: #15803d;
+            --success-light: #dcfce7;
+            --error: #b91c1c;
+            --error-light: #fee2e2;
+            --border: #e2e8f0;
+            --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+            --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.05), 0 4px 6px -4px rgb(0 0 0 / 0.05);
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            --font-main: 'Plus Jakarta Sans', sans-serif;
+            --font-heading: 'Outfit', sans-serif;
+        }}
+
+        [data-theme="dark"] {{
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-tertiary: #334155;
+            --text-primary: #f8fafc;
+            --text-secondary: #cbd5e1;
+            --text-muted: #94a3b8;
+            --accent: #2dd4bf;
+            --accent-light: #115e59;
+            --accent-hover: #5eead4;
+            --success: #4ade80;
+            --success-light: #14532d;
+            --error: #f87171;
+            --error-light: #7f1d1d;
+            --border: #334155;
+            --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -2px rgb(0 0 0 / 0.3);
+            --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.4), 0 4px 6px -4px rgb(0 0 0 / 0.4);
+        }}
+
+        * {{
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }}
+
+        body {{
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: var(--font-main);
+            line-height: 1.5;
+            transition: var(--transition);
+            padding: 2rem 1rem;
+        }}
+
+        .container {{
+            max-width: 1200px;
+            margin: 0 auto;
+        }}
+
+        /* Header section with Glassmorphism */
+        header {{
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 1.5rem;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: var(--shadow-lg);
+            transition: var(--transition);
+        }}
+
+        [data-theme="dark"] header {{
+            background: rgba(30, 41, 59, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }}
+
+        .header-title h1 {{
+            font-family: var(--font-heading);
+            font-size: 2.25rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--accent), #3b82f6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.25rem;
+        }}
+
+        .header-title p {{
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            font-weight: 500;
+        }}
+
+        /* Theme Toggle Switch */
+        .theme-toggle {{
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            padding: 0.5rem 1rem;
+            border-radius: 9999px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-family: var(--font-main);
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            transition: var(--transition);
+        }}
+
+        .theme-toggle:hover {{
+            background: var(--border);
+            color: var(--text-primary);
+        }}
+
+        /* Cards layout */
+        .grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }}
+
+        .card {{
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 1.25rem;
+            padding: 1.5rem;
+            box-shadow: var(--shadow);
+            transition: var(--transition);
+        }}
+
+        .card:hover {{
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }}
+
+        .card h2 {{
+            font-family: var(--font-heading);
+            font-size: 1.25rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: var(--text-primary);
+        }}
+
+        .metrics-list {{
+            list-style: none;
+        }}
+
+        .metrics-list li {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid var(--border);
+        }}
+
+        .metrics-list li:last-child {{
+            border-bottom: none;
+        }}
+
+        .metrics-list .label {{
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            font-weight: 500;
+        }}
+
+        .metrics-list .value {{
+            font-weight: 700;
+            font-size: 1rem;
+        }}
+
+        /* Status badges */
+        .badge {{
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+        }}
+
+        .badge-success {{
+            background-color: var(--success-light);
+            color: var(--success);
+        }}
+
+        .badge-error {{
+            background-color: var(--error-light);
+            color: var(--error);
+        }}
+
+        /* Navigation Tabs */
+        .tabs {{
+            display: flex;
+            gap: 0.5rem;
+            border-bottom: 2px solid var(--border);
+            margin-bottom: 1.5rem;
+            overflow-x: auto;
+            padding-bottom: 2px;
+        }}
+
+        .tab-btn {{
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-family: var(--font-main);
+            font-size: 0.95rem;
+            font-weight: 600;
+            padding: 0.75rem 1.25rem;
+            cursor: pointer;
+            border-radius: 0.5rem 0.5rem 0 0;
+            transition: var(--transition);
+            white-space: nowrap;
+        }}
+
+        .tab-btn:hover {{
+            color: var(--text-primary);
+            background-color: var(--bg-tertiary);
+        }}
+
+        .tab-btn.active {{
+            color: var(--accent);
+            border-bottom: 3px solid var(--accent);
+            margin-bottom: -2px;
+        }}
+
+        /* Table Design (Premium, WCAG 2.2 Compliant) */
+        .tab-content {{
+            display: none;
+            animation: fadeIn 0.4s ease;
+        }}
+
+        .tab-content.active {{
+            display: block;
+        }}
+
+        @keyframes fadeIn {{
+            from {{ opacity: 0; transform: translateY(4px); }}
+            to {{ opacity: 1; transform: translateY(0); }}
+        }}
+
+        .table-container {{
+            width: 100%;
+            overflow-x: auto;
+            border-radius: 1rem;
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow);
+            background-color: var(--bg-secondary);
+        }}
+
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 0.9rem;
+        }}
+
+        thead {{
+            background-color: var(--bg-tertiary);
+        }}
+
+        th {{
+            padding: 1rem 1.25rem;
+            font-family: var(--font-heading);
+            font-weight: 700;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border-bottom: 2px solid var(--border);
+            white-space: nowrap;
+        }}
+
+        td {{
+            padding: 0.875rem 1.25rem;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-secondary);
+            font-weight: 500;
+        }}
+
+        tbody tr:hover {{
+            background-color: var(--bg-primary);
+            transition: var(--transition);
+        }}
+
+        tbody tr:last-child td {{
+            border-bottom: none;
+        }}
+
+        /* Total row special styling */
+        tr.total-row {{
+            background-color: var(--bg-tertiary);
+            font-weight: 700;
+        }}
+
+        tr.total-row td {{
+            color: var(--text-primary);
+            font-weight: 700;
+            border-top: 2px solid var(--border);
+            border-bottom: 2px solid var(--border);
+        }}
+
+        /* Numeric alignment */
+        .text-right {{
+            text-align: right;
+        }}
+
+        .text-center {{
+            text-align: center;
+        }}
+
+        /* Footer styling */
+        footer {{
+            margin-top: 4rem;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            font-weight: 500;
+            border-top: 1px solid var(--border);
+            padding-top: 2rem;
+        }}
+
+        footer a {{
+            color: var(--accent);
+            text-decoration: none;
+            font-weight: 600;
+        }}
+
+        footer a:hover {{
+            text-decoration: underline;
+        }}
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {{
+            body {{
+                padding: 1rem 0.5rem;
+            }}
+            header {{
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 1rem;
+            }}
+            .theme-toggle {{
+                align-self: flex-end;
+            }}
+        }}
+    </style>
+</head>
+<body data-theme="light">
+    <div class="container">
+        <!-- HEADER -->
+        <header>
+            <div class="header-title">
+                <h1>PowerPython Simulation Report</h1>
+                <p>Analysis: {analysis_upper} | Target Case: {case_id}</p>
+            </div>
+            <button id="themeToggleBtn" class="theme-toggle" aria-label="Toggle visual theme" onclick="toggleTheme()">
+                <span id="themeToggleText">Dark Mode</span>
+            </button>
+        </header>
+
+        <!-- MAIN LAYOUT -->
+        <main>
+            <!-- OVERVIEW SUMMARY CARDS -->
+            <section aria-labelledby="summary-heading" class="grid">
+                <!-- Card 1: Convergence Status -->
+                <div class="card">
+                    <h2 id="summary-heading">
+                        <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>
+                        Convergence Summary
+                    </h2>
+                    <ul class="metrics-list">
+                        <li>
+                            <span class="label">Status</span>
+                            <span class="value"><span class="badge {status_badge_class}">{status_text}</span></span>
+                        </li>
+                        <li>
+                            <span class="label">Tolerance/Accuracy</span>
+                            <span class="value">{accuracy_str}</span>
+                        </li>
+                        {extra_summary_rows}
+                    </ul>
+                </div>
+
+                <!-- Card 2: System Quantities -->
+                {system_quantities_card}
+            </section>
+
+            <!-- TABS NAVIGATION -->
+            <nav aria-label="Report section navigation">
+                <div class="tabs">
+                    <button id="tab-btn-bus" class="tab-btn active" onclick="switchTab('bus')" aria-selected="true" aria-controls="tab-content-bus">Buses & Voltages</button>
+                    {gen_tab_btn}
+                    {flows_tab_btn}
+                    {extra_tab_btn}
+                </div>
+            </nav>
+
+            <!-- TAB CONTENTS -->
+            <!-- Tab 1: Buses -->
+            <div id="tab-content-bus" class="tab-content active" role="tabpanel" aria-labelledby="tab-btn-bus">
+                <div class="table-container">
+                    {bus_table_html}
+                </div>
+            </div>
+
+            <!-- Tab 2: Generators -->
+            {gen_table_content}
+
+            <!-- Tab 3: Line Flows -->
+            {flows_table_content}
+
+            <!-- Tab 4: Extras -->
+            {extra_table_content}
+        </main>
+
+        <!-- FOOTER -->
+        <footer>
+            <p>Generated by <a href="https://github.com/salorajan/matpower_data_migration" target="_blank" rel="noopener">PowerPython (matpower-python)</a> &copy; 2026. All rights reserved.</p>
+        </footer>
+    </div>
+
+    <!-- JAVASCRIPT FOR DYNAMIC INTERACTION -->
+    <script>
+        // Theme switching logic
+        function toggleTheme() {{
+            const body = document.body;
+            const currentTheme = body.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            body.setAttribute('data-theme', newTheme);
+            
+            const btnText = document.getElementById('themeToggleText');
+            btnText.textContent = newTheme === 'dark' ? 'Light Mode' : 'Dark Mode';
+            localStorage.setItem('power_python_theme', newTheme);
+        }}
+
+        // Initialize theme from storage
+        const savedTheme = localStorage.getItem('power_python_theme');
+        if (savedTheme) {{
+            document.body.setAttribute('data-theme', savedTheme);
+            document.getElementById('themeToggleText').textContent = savedTheme === 'dark' ? 'Light Mode' : 'Dark Mode';
+        }}
+
+        // Tabs switching logic
+        function switchTab(tabId) {{
+            // Deactivate all tabs and tab content
+            const buttons = document.querySelectorAll('.tab-btn');
+            const contents = document.querySelectorAll('.tab-content');
+            
+            buttons.forEach(btn => {{
+                btn.classList.remove('active');
+                btn.setAttribute('aria-selected', 'false');
+            }});
+            
+            contents.forEach(content => {{
+                content.classList.remove('active');
+            }});
+            
+            // Activate selected tab and content
+            const targetBtn = document.getElementById('tab-btn-' + tabId);
+            const targetContent = document.getElementById('tab-content-' + tabId);
+            
+            if (targetBtn && targetContent) {{
+                targetBtn.classList.add('active');
+                targetBtn.setAttribute('aria-selected', 'true');
+                targetContent.classList.add('active');
+            }}
+        }}
+    </script>
+</body>
+</html>
+"""
+    with open(filename, 'w', encoding='utf-8') as f:
+        f.write(html_content)
+    print(f"Results exported to HTML: {filename}")
+
+def make_table_wcag_compliant(table, title, description):
+    """
+    Apply WCAG 2.2 compatibility features to a python-docx table:
+    1. Set the first row (headers) to repeat on every page (tblHeader).
+    2. Prevent all rows from splitting across pages (cantSplit).
+    3. Add alternative text (Title and Description) for screen readers.
+    """
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    
+    # 1. Set repeat header for row 0
+    if len(table.rows) > 0:
+        tr = table.rows[0]._tr
+        trPr = tr.get_or_add_trPr()
+        tblHeader = OxmlElement('w:tblHeader')
+        tblHeader.set(qn('w:val'), "true")
+        trPr.append(tblHeader)
+        
+    # 2. Set cantSplit for all rows
+    for row in table.rows:
+        tr = row._tr
+        trPr = tr.get_or_add_trPr()
+        cantSplit = OxmlElement('w:cantSplit')
+        trPr.append(cantSplit)
+        
+    # 3. Add accessibility Title and Description (Alt text)
+    tblPr = table._tbl.tblPr
+    tblCaption = OxmlElement('w:tblCaption')
+    tblCaption.set(qn('w:val'), title)
+    tblPr.append(tblCaption)
+    
+    tblDescription = OxmlElement('w:tblDescription')
+    tblDescription.set(qn('w:val'), description)
+    tblPr.append(tblDescription)
 
 def export_results_docx(case, filename, analysis, success, accuracy, extra_results=None, extra_info=None):
     doc = docx.Document()
@@ -550,21 +1491,47 @@ def export_results_docx(case, filename, analysis, success, accuracy, extra_resul
             
     # Section 2: Tables
     if hasattr(case, 'bus') and case.bus is not None:
-        doc.add_heading("2.0 Bus Voltages (First 30)", level=1)
-        table = doc.add_table(rows=1, cols=4)
+        # Calculate generation per bus
+        gen_p = np.zeros(len(case.bus))
+        gen_q = np.zeros(len(case.bus))
+        for i in range(len(case.gen)):
+            if case.gen[i, GEN_STATUS] > 0:
+                bus_idx = int(case.gen[i, GEN_BUS])
+                gen_p[bus_idx] += case.gen[i, PG]
+                gen_q[bus_idx] += case.gen[i, QG]
+                
+        doc.add_heading("2.0 Bus Voltages and Power Dispatch", level=1)
+        table = doc.add_table(rows=1, cols=8)
         table.style = 'Light Shading Accent 1'
         hdr_cells = table.rows[0].cells
         hdr_cells[0].text = 'Bus ID'
         hdr_cells[1].text = 'Type'
         hdr_cells[2].text = 'V Magnitude (pu)'
         hdr_cells[3].text = 'V Angle (deg)'
+        hdr_cells[4].text = 'Load P (MW)'
+        hdr_cells[5].text = 'Load Q (MVAr)'
+        hdr_cells[6].text = 'Gen P (MW)'
+        hdr_cells[7].text = 'Gen Q (MVAr)'
         
-        for i in range(min(30, len(case.bus))):
+        limit = min(100, len(case.bus))
+        for i in range(limit):
             row_cells = table.add_row().cells
             row_cells[0].text = str(int(case.external_bus_ids[i]))
-            row_cells[1].text = str(int(case.bus[i, BUS_TYPE]))
+            
+            # Map type to string: PQ, PV, REF
+            bus_t = int(case.bus[i, BUS_TYPE])
+            type_str = "PQ" if bus_t == PQ else "PV" if bus_t == PV else "REF" if bus_t == REF else "Isolated"
+            row_cells[1].text = type_str
+            
             row_cells[2].text = f"{case.bus[i, VM]:.4f}"
             row_cells[3].text = f"{case.bus[i, VA]:.2f}"
+            row_cells[4].text = f"{case.bus[i, PD]:.2f}"
+            row_cells[5].text = f"{case.bus[i, QD]:.2f}"
+            row_cells[6].text = f"{gen_p[i]:.2f}"
+            row_cells[7].text = f"{gen_q[i]:.2f}"
+            
+        make_table_wcag_compliant(table, "Bus Voltages and Power Dispatch Table", 
+                                  "Table showing voltage magnitude, angle, and active/reactive load and generation for each bus.")
             
         doc.add_heading("3.0 Generator Dispatch", level=1)
         table_gen = doc.add_table(rows=1, cols=4)
@@ -581,6 +1548,65 @@ def export_results_docx(case, filename, analysis, success, accuracy, extra_resul
             row_cells[1].text = str(int(case.external_bus_ids[int(case.gen[i, GEN_BUS])]))
             row_cells[2].text = f"{case.gen[i, PG]:.2f}"
             row_cells[3].text = f"{case.gen[i, QG]:.2f}"
+            
+        make_table_wcag_compliant(table_gen, "Generator Dispatch Table", 
+                                  "Table listing generator indices, connection buses, and real and reactive power outputs.")
+            
+        doc.add_heading("4.0 Line Flows and Losses", level=1)
+        table_flows = doc.add_table(rows=1, cols=8)
+        table_flows.style = 'Light Shading Accent 1'
+        hdr_flows = table_flows.rows[0].cells
+        hdr_flows[0].text = 'From Bus'
+        hdr_flows[1].text = 'To Bus'
+        hdr_flows[2].text = 'P From->To (MW)'
+        hdr_flows[3].text = 'Q From->To (MVAr)'
+        hdr_flows[4].text = 'P To->From (MW)'
+        hdr_flows[5].text = 'Q To->From (MVAr)'
+        hdr_flows[6].text = 'P Loss (MW)'
+        hdr_flows[7].text = 'Q Loss (MVAr)'
+        
+        limit_br = min(100, len(case.branch))
+        for i in range(limit_br):
+            row_cells = table_flows.add_row().cells
+            f_id = int(case.external_bus_ids[int(case.branch[i, F_BUS])])
+            t_id = int(case.external_bus_ids[int(case.branch[i, T_BUS])])
+            pf = case.branch[i, PF]
+            qf = case.branch[i, QF]
+            pt = case.branch[i, PT]
+            qt = case.branch[i, QT]
+            pl = pf + pt
+            ql = qf + qt
+            
+            row_cells[0].text = str(f_id)
+            row_cells[1].text = str(t_id)
+            row_cells[2].text = f"{pf:.2f}"
+            row_cells[3].text = f"{qf:.2f}"
+            row_cells[4].text = f"{pt:.2f}"
+            row_cells[5].text = f"{qt:.2f}"
+            row_cells[6].text = f"{pl:.2f}"
+            row_cells[7].text = f"{ql:.2f}"
+            
+        # Add Total Row
+        row_cells = table_flows.add_row().cells
+        row_cells[0].text = "Total"
+        row_cells[1].text = ""
+        row_cells[2].text = ""
+        row_cells[3].text = ""
+        row_cells[4].text = ""
+        row_cells[5].text = ""
+        full_p_loss = np.sum(case.branch[:, PF] + case.branch[:, PT])
+        full_q_loss = np.sum(case.branch[:, QF] + case.branch[:, QT])
+        row_cells[6].text = f"{full_p_loss:.2f}"
+        row_cells[7].text = f"{full_q_loss:.2f}"
+        
+        # Bold the total row
+        for cell in row_cells:
+            for paragraph in cell.paragraphs:
+                for run in paragraph.runs:
+                    run.font.bold = True
+                    
+        make_table_wcag_compliant(table_flows, "Line Flows and Losses Table", 
+                                  "Table showing active and reactive power flows in both directions, and individual line active/reactive losses with totals.")
             
     elif hasattr(case, 'bus3p') and case.bus3p is not None:
         doc.add_heading("2.0 3-Phase Bus Voltages", level=1)
@@ -605,9 +1631,12 @@ def export_results_docx(case, filename, analysis, success, accuracy, extra_resul
             row_cells[5].text = f"{case.bus3p[i, 7]:.2f}"
             row_cells[6].text = f"{case.bus3p[i, 8]:.2f}"
             
-    # Section 4: Extra Results if present
+        make_table_wcag_compliant(table, "3-Phase Bus Voltages Table", 
+                                  "Table listing voltage magnitudes and angles for phases A, B, and C at each bus.")
+            
+    # Section 5: Extra Results if present
     if extra_results is not None:
-        doc.add_heading("4.0 Optimization / Extra Outputs", level=1)
+        doc.add_heading("5.0 Optimization / Extra Outputs", level=1)
         if isinstance(extra_results, pd.DataFrame):
             # Render first 20 rows of DataFrame
             table_extra = doc.add_table(rows=1, cols=len(extra_results.columns))
@@ -618,6 +1647,8 @@ def export_results_docx(case, filename, analysis, success, accuracy, extra_resul
                 row_cells = table_extra.add_row().cells
                 for col_idx, col_name in enumerate(extra_results.columns):
                     row_cells[col_idx].text = f"{extra_results.iloc[r_idx, col_idx]}"
+            make_table_wcag_compliant(table_extra, "Optimization Extra Results Table", 
+                                      "Table displaying extra optimization results and outputs.")
         elif isinstance(extra_results, dict):
             for k, v in extra_results.items():
                 doc.add_paragraph().add_run(f"Data: {k}").bold = True
@@ -677,7 +1708,7 @@ def run_cli_command(analysis, args):
     accuracy = 1e-8
     for arg in args[1:]:
         try:
-            if ("e" in arg or "." in arg or arg.isdigit()) and not any(ext in arg.lower() for ext in ["excel", "xlsx", "csv", "docx", "word"]):
+            if ("e" in arg or "." in arg or arg.isdigit()) and not any(ext in arg.lower() for ext in ["excel", "xlsx", "csv", "docx", "word", "html", "htm"]):
                 accuracy = float(arg)
                 break
         except ValueError:
@@ -695,6 +1726,9 @@ def run_cli_command(analysis, args):
             break
         elif arg_lower in ["docx", "word"]:
             export_format = "docx"
+            break
+        elif arg_lower in ["html", "htm"]:
+            export_format = "html"
             break
 
     # Load case
@@ -812,6 +1846,8 @@ def run_cli_command(analysis, args):
             export_results_csv(case, f"{analysis}_{case_id}", extra_results)
         elif export_format == "docx":
             export_results_docx(case, f"{analysis}_{case_id}.docx", analysis, success, accuracy, extra_results, extra_info)
+        elif export_format == "html":
+            export_results_html(case, f"{analysis}_{case_id}.html", analysis, success, accuracy, extra_results, extra_info)
         else:
             # Print basic report
             if hasattr(case, 'bus') and case.bus is not None and len(case.bus) > 0:

@@ -26,8 +26,9 @@ The syntax for executing any analysis is:
 - **`[accuracy]`**: Optional convergence tolerance float (e.g. `1e-5`, `1e-8`). Defaults to `1e-8`.
 - **`[export_format]`**: Optional export type. Supported:
   - `excel` / `xlsx`: Exports results to a multi-sheet spreadsheet (e.g., `acpf_case14.xlsx`).
-  - `csv`: Exports three raw text tables (e.g., `acpf_case14_bus.csv`, `acpf_case14_gen.csv`, `acpf_case14_branch.csv`).
+  - `csv`: Exports four raw text tables (e.g., `acpf_case14_bus.csv`, `acpf_case14_gen.csv`, `acpf_case14_branch.csv`, and `acpf_case14_flows.csv`).
   - `docx` / `word`: Generates a premium Word report document containing simulation metadata, key performance metrics, and formatted data tables (e.g., `acpf_case14.docx`).
+  - `html`: Generates a gorgeous, WCAG 2.2 compliant interactive HTML report page with support for dark/light themes and responsive tables (e.g., `acpf_case6ww.html`).
 
 ### 2.2 CLI Examples
 * **AC Power Flow on Case 14 at 1e-4 accuracy exported to Excel:**
@@ -41,6 +42,12 @@ The syntax for executing any analysis is:
   hepf case9 docx
   ```
   *Output File:* `hepf_case9.docx`
+
+* **AC Power Flow on Case 6ww exported to an Interactive HTML Page:**
+  ```bash
+  acpf case6ww 1e-4 html
+  ```
+  *Output File:* `acpf_case6ww.html`
 
 * **Unbalanced 3-Phase Power Flow on Case 3P_A exported to CSV:**
   ```bash
@@ -93,8 +100,9 @@ if success:
 ### 3.2 Programmatic Export API
 You can export results programmatically from your scripts using:
 *   `pp.export_results_excel(case, filename, analysis, extra_results=None)`: Exports to Excel (.xlsx) with Segmented sheets styled in MATLAB MATPOWER format.
-*   `pp.export_results_csv(case, prefix, extra_results=None)`: Exports separate CSV files for `bus`, `gen`, and `branch`.
+*   `pp.export_results_csv(case, prefix, extra_results=None)`: Exports separate CSV files for `bus`, `gen`, `branch`, and `flows`.
 *   `pp.export_results_docx(case, filename, analysis, success, accuracy, extra_results=None, extra_info=None)`: Exports a Word report (.docx).
+*   `pp.export_results_html(case, filename, analysis, success, accuracy, extra_results=None, extra_info=None)`: Exports an interactive HTML report (.html).
 
 ### 3.3 Solved Outputs Excel (.xlsx) Format Details
 The exported Excel sheet has the following sheets and columns matching standard **MATLAB MATPOWER matrices**:

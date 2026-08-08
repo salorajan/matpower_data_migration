@@ -66,6 +66,10 @@ Registering console scripts makes the solvers directly executable from the termi
   ```bash
   hepf case9 docx
   ```
+- **Run ACPF on Case 6ww, export to Interactive HTML Report:**
+  ```bash
+  acpf case6ww 1e-4 html
+  ```
 - **Export solver help menu to Word Document:**
   ```bash
   hepf --help docx
@@ -88,6 +92,9 @@ if success:
     
     # 3. Export solved results to Excel in MATLAB MATPOWER format
     pp.export_results_excel(case, "acpf_results.xlsx", "acpf")
+    
+    # Or export to Interactive HTML
+    pp.export_results_html(case, "acpf_results.html", "acpf", success, 1e-6)
     
     # Or export to CSV
     pp.export_results_csv(case, "acpf_results", "acpf")

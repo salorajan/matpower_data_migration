@@ -32,3 +32,4 @@ from .solvers.sc_opf import run_sc_opf
 from .network.sensitivity import make_ptdf, make_lodf
 from .utils.audit import calculate_system_balance
 from .utils.lmp_decomp import decompose_dc_lmp
+from .cli import export_results_excel, export_results_csv, export_results_docx, export_results_html
