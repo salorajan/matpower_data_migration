@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "matpower-python"
-version = "0.1.5"
+version = "0.1.6"
 authors = [
     { name = "Robert MS Danaraj", email = "salorajan@gmail.com" },
     { name = "Dr. M. RAMESH BABU", email = "rameshbabum@stjosephs.ac.in" }
