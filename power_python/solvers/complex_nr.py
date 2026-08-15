@@ -62,64 +62,48 @@ def run_complex_nr(case, max_it=10, tol=1e-8, verbose=True):
             break
             
         # 3. Wirtinger Derivatives
-        A = diags(np.conj(I)).toarray()
-        B = (diags(V) @ np.conj(Ybus)).toarray()
+        A = diags(np.conj(I)).tocsr()
+        B = (diags(V).tocsr() @ np.conj(Ybus)).tocsr()
         
         n_pq, n_pv = len(pq), len(pv)
-        dim = 2*n_pq + 2*n_pv
-        R = np.zeros(dim, dtype=complex)
-        J = np.zeros((dim, dim), dtype=complex)
         
-        # Mapping
-        # Row 0..n_pq-1: PQ S mismatch
-        # Row n_pq..2*n_pq-1: PQ S* mismatch
-        # Row 2*n_pq..2*n_pq+n_pv-1: PV P mismatch
-        # Row 2*n_pq+n_pv..dim-1: PV |V|^2 mismatch
+        # Slices of A and B
+        A_pq_pq = A[pq, :][:, pq]
+        A_pq_pv = A[pq, :][:, pv]
+        B_pq_pq = B[pq, :][:, pq]
+        B_pq_pv = B[pq, :][:, pv]
         
-        # Column 0..n_pq-1: dV_pq
-        # Column n_pq..2*n_pq-1: dV*_pq
-        # Column 2*n_pq..2*n_pq+n_pv-1: dV_pv
-        # Column 2*n_pq+n_pv..dim-1: dV*_pv
-
-        # PQ Equations
-        for i, idx in enumerate(pq):
-            R[i] = -mis[idx]
-            R[n_pq + i] = -np.conj(mis[idx])
-            # w.r.t PQ vars
-            for j, jdx in enumerate(pq):
-                J[i, j] = A[idx, jdx]
-                J[i, n_pq+j] = B[idx, jdx]
-                J[n_pq+i, j] = np.conj(B[idx, jdx])
-                J[n_pq+i, n_pq+j] = np.conj(A[idx, jdx])
-            # w.r.t PV vars
-            for j, jdx in enumerate(pv):
-                J[i, 2*n_pq + j] = A[idx, jdx]
-                J[i, 2*n_pq + n_pv + j] = B[idx, jdx]
-                J[n_pq+i, 2*n_pq + j] = np.conj(B[idx, jdx])
-                J[n_pq+i, 2*n_pq + n_pv + j] = np.conj(A[idx, jdx])
-
-        # PV Equations
-        for i, idx in enumerate(pv):
-            R[2*n_pq + i] = -mis[idx].real
-            R[2*n_pq + n_pv + i] = -(np.abs(V[idx])**2 - case.bus[idx, VM]**2)
-            # Row 1: dP/dV = 0.5 * (dS/dV + dS*/dV)
-            for j, jdx in enumerate(pq):
-                J[2*n_pq+i, j] = 0.5 * (A[idx, jdx] + np.conj(B[idx, jdx]))
-                J[2*n_pq+i, n_pq+j] = 0.5 * (B[idx, jdx] + np.conj(A[idx, jdx]))
-            for j, jdx in enumerate(pv):
-                J[2*n_pq+i, 2*n_pq+j] = 0.5 * (A[idx, jdx] + np.conj(B[idx, jdx]))
-                J[2*n_pq+i, 2*n_pq+n_pv+j] = 0.5 * (B[idx, jdx] + np.conj(A[idx, jdx]))
-                
-            # Row 2: d|V|^2
-            J[2*n_pq + n_pv + i, 2*n_pq + i] = np.conj(V[idx])
-            J[2*n_pq + n_pv + i, 2*n_pq + n_pv + i] = V[idx]
-
-        # 4. Solve
-        dx = np.linalg.solve(J, R)
+        A_pv_pq = A[pv, :][:, pq]
+        A_pv_pv = A[pv, :][:, pv]
+        B_pv_pq = B[pv, :][:, pq]
+        B_pv_pv = B[pv, :][:, pv]
+        
+        # Build block matrix J
+        Z_pv_pq = csr_matrix((n_pv, n_pq))
+        D_conj_V = diags(np.conj(V[pv]))
+        D_V = diags(V[pv])
+        
+        J = bmat([
+            [A_pq_pq, B_pq_pq, A_pq_pv, B_pq_pv],
+            [np.conj(B_pq_pq), np.conj(A_pq_pq), np.conj(B_pq_pv), np.conj(A_pq_pv)],
+            [0.5 * (A_pv_pq + np.conj(B_pv_pq)), 0.5 * (B_pv_pq + np.conj(A_pv_pq)), 0.5 * (A_pv_pv + np.conj(B_pv_pv)), 0.5 * (B_pv_pv + np.conj(A_pv_pv))],
+            [Z_pv_pq, Z_pv_pq, D_conj_V, D_V]
+        ], format='csr')
+        
+        # Residual mismatch vector R
+        R = np.concatenate([
+            -mis[pq],
+            -np.conj(mis[pq]),
+            -mis[pv].real,
+            -(np.abs(V[pv])**2 - case.bus[pv, VM]**2)
+        ])
+        
+        # 4. Solve using sparse solver
+        dx = spsolve(J, R)
         
         # 5. Update
         V[pq] += dx[0:n_pq]
-        V[pv] += dx[2*n_pq : 2*n_pq+n_pv]
+        V[pv] += dx[2*n_pq : 2*n_pq + n_pv]
         
     if success:
         if verbose: print(f"Complex NR Converged in {it+1} iterations.")

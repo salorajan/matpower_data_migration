@@ -24,7 +24,6 @@ def run_sdp_opf(case, verbose=True):
     
     # 1. Setup Network Matrices
     Ybus, _, _ = make_ybus(baseMVA, case.bus, case.branch)
-    Ybus = Ybus.toarray()
     
     # 2. Decision Variables
     W = cp.Variable((nb, nb), hermitian=True)
@@ -55,20 +54,16 @@ def run_sdp_opf(case, verbose=True):
         bus_gen_indices[int(case.gen[i, GEN_BUS])].append(i)
         
     for i in range(nb):
-        ei = np.zeros((nb, 1))
-        ei[i] = 1
-        Ei = ei @ ei.T
-        Yi = Ei @ Ybus
-        
         # Power injections
-        # P_inj = Re(Tr(Yi * W))
-        # Q_inj = Im(Tr(Yi * W))
+        # P_inj = Re((Ybus @ W)[i, i]) = Re(Ybus[i, :] @ W[:, i])
+        # Q_inj = Im((Ybus @ W)[i, i]) = Im(Ybus[i, :] @ W[:, i])
+        V_inj = Ybus[i, :] @ W[:, i]
         
         bus_pg = cp.sum([Pg[g] for g in bus_gen_indices[i]]) if bus_gen_indices[i] else 0
-        constraints.append(cp.real(cp.trace(Yi @ W)) == bus_pg - case.bus[i, PD] / baseMVA)
+        constraints.append(cp.real(V_inj) == bus_pg - case.bus[i, PD] / baseMVA)
         
         bus_qg = cp.sum([Qg[g] for g in bus_gen_indices[i]]) if bus_gen_indices[i] else 0
-        constraints.append(cp.imag(cp.trace(Yi @ W)) == bus_qg - case.bus[i, QD] / baseMVA)
+        constraints.append(cp.imag(V_inj) == bus_qg - case.bus[i, QD] / baseMVA)
         
         # Use cp.real for voltage limits to avoid CVXPY complex inequality error
         constraints.append(cp.real(W[i, i]) >= case.bus[i, VMIN]**2)

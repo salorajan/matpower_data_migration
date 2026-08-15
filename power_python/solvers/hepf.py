@@ -126,16 +126,7 @@ def run_hepf(case, max_order=14, verbose=True):
             V[i] = V_coeffs[i, 0]
             continue
             
-        # Use [N/N] or [N/N-1] Pade
-        n_pade = max_order // 2
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore") # Suppress all numerical noise during Pade
-            try:
-                p, q = pade(V_coeffs[i, :], n_pade)
-                V[i] = p(1.0) / q(1.0)
-            except:
-                # Fallback to Taylor sum if Pade fails
-                V[i] = np.sum(V_coeffs[i, :])
+        V[i] = pade_approximant(V_coeffs[i, :], 1.0)
 
     # Residual Check
     mis = V * np.conj(Ybus @ V) - Sbus
@@ -164,7 +155,30 @@ def run_hepf(case, max_order=14, verbose=True):
 
 def pade_approximant(coeffs, s=1.0):
     """
-    Computes the [N/N] or [N/N-1] Pade approximant of a power series.
-    Not yet implemented.
+    Computes the [N/N] or [N/N-1] Pade approximant of a power series evaluated at s
+    using Wynn's epsilon algorithm.
     """
-    pass
+    n_terms = len(coeffs)
+    S = np.zeros(n_terms, dtype=complex)
+    curr_sum = 0.0
+    s_pow = 1.0
+    for k in range(n_terms):
+        curr_sum += coeffs[k] * s_pow
+        S[k] = curr_sum
+        s_pow *= s
+        
+    table = np.zeros((n_terms + 1, n_terms), dtype=complex)
+    table[1, :] = S
+    
+    for r in range(1, n_terms):
+        for i in range(n_terms - r):
+            diff = table[r, i + 1] - table[r, i]
+            if np.abs(diff) < 1e-16:
+                table[r + 1, i] = 0.0
+            else:
+                table[r + 1, i] = table[r - 1, i + 1] + 1.0 / diff
+                
+    best_r = n_terms - 1 if (n_terms - 1) % 2 == 0 else n_terms - 2
+    if best_r >= 0:
+        return table[best_r + 1, 0]
+    return S[-1]

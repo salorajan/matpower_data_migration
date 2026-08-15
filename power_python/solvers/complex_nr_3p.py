@@ -81,19 +81,19 @@ def run_complex_nr_3p(case, max_it=10, tol=1e-8, verbose=True):
         B = (diags(V).tocsr() @ np.conj(Ybus)).tocsr()
         
         # Sub-matrices for unknown nodes
-        A_sub = A[mask, :][:, mask].toarray()
-        B_sub = B[mask, :][:, mask].toarray()
+        A_sub = A[mask, :][:, mask]
+        B_sub = B[mask, :][:, mask]
         
         # System: [A B; B* A*] * [dV; dV*] = -[mis; mis*]
-        J = np.block([
+        J = bmat([
             [A_sub, B_sub],
             [np.conj(B_sub), np.conj(A_sub)]
-        ])
+        ], format='csr')
         
         R = -np.concatenate([mis[mask], np.conj(mis[mask])])
         
         # 4. Solve
-        dx = np.linalg.solve(J, R)
+        dx = spsolve(J, R)
         
         # 5. Update
         V[mask] += dx[:len(mask)]
