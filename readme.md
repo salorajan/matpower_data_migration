@@ -34,6 +34,7 @@ PowerPython contains **23 analytical solvers** grouped by standard MATPOWER pari
 - **Stochastic Dispatch**: Optimization under renewable generation scenarios (`stopf`).
 - **SDP OPF Relaxation**: Semidefinite Programming convex relaxation verifying global optimality (`sdpopf`).
 - **Grid Planning**: VAr Planning/Capacitor placement (`varplan`).
+- **PSS/E-Compatible Dynamics**: Transient stability simulation engine supporting standard PSS/E `.dyr` dynamic model parsing and differential-algebraic equations (DAE) solvers (`dynamics`).
 
 ---
 

@@ -132,7 +132,44 @@ violations_df = pp.run_contingency_analysis(case, verbose=True)
 print(violations_df)
 ```
 
+### 3.5 Scripting Example: PSS/E Dynamic Simulation (Transient Stability)
+PowerPython includes an optional, object-oriented dynamic simulation module for transient stability studies using PSS/E-compatible `.dyr` files.
+
+```python
+import power_python as pp
+from power_python.dynamics import DYRParser, run_simulation
+
+# 1. Load steady-state power flow case
+case = pp.PowerCase()
+case.load_from_json("power_python/outputs/json/case9.json")
+
+# 2. Parse dynamic data from a PSS/E .dyr file
+parser = DYRParser()
+dyr_records = parser.parse_file("power_python/tests/case9_test.dyr")
+
+# 3. Run transient stability simulation
+# Apply a 3-phase fault on Bus 7 at t=0.1s, clear it at t=0.2s by tripping branch 7-8
+history = run_simulation(
+    power_case=case,
+    dyr_records=dyr_records,
+    fault_bus=7,
+    fault_time=0.1,
+    clear_time=0.2,
+    t_end=1.5,
+    dt=0.005,
+    trip_branch=(7, 8),
+    verbose=True
+)
+
+# 4. Access dynamic state variables
+time_steps = history['time']
+rotor_angles = history['rotor_angles']  # Dict of {gen_idx: array}
+speeds = history['speeds']              # Dict of {gen_idx: array}
+voltages = history['bus_voltages']      # Array of shape (nt, nb)
+```
+
 ---
+
 
 ## 4.0 Catalog of Available Shell Commands
 
