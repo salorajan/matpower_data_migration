@@ -135,3 +135,20 @@ python power_python/tests/test_comprehensive.py
 ### Acknowledgement
 We express our sincere gratitude and appreciation to **St. Joseph's College of Engineering**, Chennai, Tamilnadu, India, for their help, support, and resources during the research, implementation, and verification of this power system analysis package.
 
+---
+
+## 7.0 References & Data Citations
+
+This package includes a clean-room implementation of dynamic models compatible with PSS/E `.dyr` files. The mathematical equations, parameters, and test systems are derived from public literature and standard benchmarks:
+
+1. **Synchronous Generator & Control Models**:
+   - **IEEE Std 1110-2002**: *IEEE Guide for Synchronous Generator Modeling Practices in Power System Stability Analyses*, IEEE Power & Energy Society.
+   - **IEEE Std 421.5-2016**: *IEEE Recommended Practice for Excitation System Models for Power System Stability Studies*, IEEE Power & Energy Society.
+   - P. Kundur, *Power System Stability and Control*, McGraw-Hill, 1994.
+   - P. W. Sauer and M. A. Pai, *Power System Dynamics and Stability*, Prentice Hall, 1998.
+
+2. **Benchmark Power Case Data (WSCC 9-Bus System)**:
+   - Western Systems Coordinating Council (WSCC) 3-generator, 9-bus stability test system.
+   - P. M. Anderson and A. A. Fouad, *Power System Control and Stability*, Iowa State University Press, 1977.
+   - Publicly available IEEE Power System Dynamic Performance Committee benchmark datasets.
+
