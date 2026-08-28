@@ -182,6 +182,7 @@ def run_simulation(power_case, dyr_records, fault_bus, fault_time, clear_time,
         
     # Map to PowerCase generators
     # Map by bus number (and order if multiple gens are at the same bus)
+    bus_gen_id_map = {} # (bus_idx, gen_id) -> gen_idx
     for (ext_bus_id, gen_id), records in grouped_records.items():
         bus_idx = power_case.get_internal_bus_idx(ext_bus_id)
         if bus_idx is None:
@@ -196,11 +197,16 @@ def run_simulation(power_case, dyr_records, fault_bus, fault_time, clear_time,
                 print(f"Warning: No generators found at bus {ext_bus_id}.")
             continue
             
-        # Match by ordering for simplicity or machine ID
-        # Here we match the first parsed record set to the first generator, etc.
-        # Find which generator index matches this gen_id
-        # For simplicity, map to the first generator at the bus
-        gen_idx = gen_indices[0]
+        # Match by ordering for multiple generators at the same bus
+        key_map = (bus_idx, gen_id)
+        if key_map not in bus_gen_id_map:
+            mapped_count = sum(1 for k in bus_gen_id_map if k[0] == bus_idx)
+            if mapped_count < len(gen_indices):
+                bus_gen_id_map[key_map] = gen_indices[mapped_count]
+            else:
+                bus_gen_id_map[key_map] = gen_indices[-1]
+                
+        gen_idx = bus_gen_id_map[key_map]
         
         # Instantiate models
         for r in records:
